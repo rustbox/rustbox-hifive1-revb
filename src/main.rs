@@ -28,5 +28,9 @@ fn main() -> ! {
 
     sprintln!("Hello from src!");
 
-    loop {}
+    loop {
+        unsafe {
+            riscv::asm::wfi();
+        }
+    }
 }

@@ -33,5 +33,9 @@ fn main() -> ! {
 
     sprintln!("This is a float {}", afloat);
 
-    loop {}
+    loop {
+        unsafe {
+            riscv::asm::wfi();
+        }
+    }
 }
