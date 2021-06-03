@@ -12,12 +12,16 @@ hifive1 = { version = "0.9.0", features = ["board-hifive1-revb"] }
 panic-halt = "0.2.0"
 riscv = "0.6.0"
 riscv-rt = "0.8.0"
+# e310x = "0.9.0"
 
 # this lets you use `cargo fix`!
-[[bin]]
-name = "rustbox-hifive1-revb"
-test = false
-bench = false
+# [[bin]]
+# name = "rustbox-hifive1-revb"
+# test = false
+# bench = false
+
+# [lib]
+# crate-type = ["staticlib"]
 
 [profile.release]
 codegen-units = 1 # better optimizations
