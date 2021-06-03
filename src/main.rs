@@ -4,11 +4,12 @@
 
 extern crate panic_halt;
 
+// use hifive1::hal::e310x::interrupt;
 use hifive1::sprint;
 use riscv_rt::entry;
 use hifive1::hal::prelude::*;
 use hifive1::hal::DeviceResources;
-use hifive1::{sprintln, pin};
+use hifive1::{pin, sprintln};
 
 use riscv::interrupt;
 
@@ -69,25 +70,38 @@ fn kmain() -> ! {
     let clocks = hifive1::clock::configure(p.PRCI, p.AONCLK, 320.mhz().into());
 
     // Configure UART for stdout
-    let mut rx = hifive1::stdout::configure(p.UART0, pin!(pins, uart0_tx), pin!(pins, uart0_rx), 115_200.bps(), clocks);
+    let mut _rx = hifive1::stdout::configure(
+        p.UART0,
+        pin!(pins, uart0_tx),
+        pin!(pins, uart0_rx),
+        115_200.bps(),
+        clocks,
+    );
 
     sprintln!("Hello World, This is Rust Box");
 
 
     loop {
-        if let Ok(w) = rx.read() {
-            match w {
-                8 => {
-                    sprint!("{}{}{}", 8 as char, ' ', 8 as char);
-                },
-                10 | 13 => {
-                    sprintln!();
-                },
-                _ => {
-                    sprint!("{}", w as char);
-                }
-            }
+        unsafe {
+            riscv::asm::wfi();
         }
+
+
+        // interrupt::free(|_| {
+        //     if let Ok(w) = rx.read() {
+        //         match w {
+        //             8 => {
+        //                 sprint!("{}{}{}", 8 as char, ' ', 8 as char);
+        //             },
+        //             10 | 13 => {
+        //                 sprintln!();
+        //             },
+        //             _ => {
+        //                 sprint!("{}", w as char);
+        //             }
+        //         }
+        //     }
+        // });
     }
 }
 
