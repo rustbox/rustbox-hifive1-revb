@@ -60,6 +60,12 @@ Apparently the way I configured and built my qemu 6.0.0 may not be as full featu
 
 And etc. So I removed them for now at least so the src/main.rs or the hello_world examples will compile and run.
 
+## Acknowledgements for setup
+1. https://github.com/tock/tock/blob/master/boards/hifive1/README.md
+2. https://github.com/sifive/freedom-e-sdk.git
+3. http://osblog.stephenmarz.com/ch0.html
+4. https://github.com/riscv-rust/riscv-rust-quickstart
+
 # Running
 
 `cargo run`
@@ -68,4 +74,4 @@ or
 
 `cargo run --example hello_world`
 
-Issue `CTRL-A`, `x` to break out of the qemu emulation.
+Press `CTRL-A`, `x` to break out of the qemu emulation.
