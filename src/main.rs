@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(panic_info_message,asm)]
 
-extern crate panic_halt;
+// extern crate panic_halt;
 
 // use hifive1::hal::e310x::interrupt;
 use hifive1::sprint;
@@ -19,33 +19,33 @@ use riscv::interrupt;
 extern "C" fn eh_personality() {}
 
 
-// #[panic_handler]
-// fn panic(info: &core::panic::PanicInfo) -> ! {
-//     sprint!("Aborting: ");
-//     if let Some(p) = info.location() {
-//         sprintln!(
-//                  "line {}, file {}: {}",
-//                  p.line(),
-//                  p.file(),
-//                  info.message().unwrap()
-//         );
-//     }
-//     else {
-//         sprintln!("no information available.");
-//     }
-//     abort();
-// }
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    sprint!("Aborting: ");
+    if let Some(p) = info.location() {
+        sprintln!(
+                 "line {}, file {}: {}",
+                 p.line(),
+                 p.file(),
+                 info.message().unwrap()
+        );
+    }
+    else {
+        sprintln!("no information available.");
+    }
+    stop();
+}
 
 
-// #[no_mangle]
-// extern "C"
-// fn abort() -> ! {
-//     loop {
-//         unsafe {
-//             asm!("wfi");
-//         }
-//     }
-// }
+#[no_mangle]
+extern "C"
+fn stop() -> ! {
+    loop {
+        unsafe {
+            asm!("wfi");
+        }
+    }
+}
 
 // ///////////////////////////////////
 // / CONSTANTS
@@ -70,7 +70,7 @@ fn kmain() -> ! {
     let clocks = hifive1::clock::configure(p.PRCI, p.AONCLK, 320.mhz().into());
 
     // Configure UART for stdout
-    let mut _rx = hifive1::stdout::configure(
+    let mut rx = hifive1::stdout::configure(
         p.UART0,
         pin!(pins, uart0_tx),
         pin!(pins, uart0_rx),
@@ -85,7 +85,6 @@ fn kmain() -> ! {
         unsafe {
             riscv::asm::wfi();
         }
-
 
         // interrupt::free(|_| {
         //     if let Ok(w) = rx.read() {
