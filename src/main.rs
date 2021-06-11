@@ -53,8 +53,8 @@ fn MachineTimer() {
     // sprint!(".");
 
     riscv::interrupt::free(|_| {
-        update_time_compare(CLOCK_SPEED / 50000) 
-        // 50k Timer interupts per second
+        update_time_compare(CLOCK_SPEED / 1000) 
+        // 1000 Timer interupts per second
         // 
     })
 }
@@ -153,7 +153,7 @@ fn set_time_cmp(value: u64) {
 // ///////////////////////////////////
 
 
-static CLOCK_SPEED: u64 = 320_000_000;
+static CLOCK_SPEED: u64 = 32_768;
 
 // ///////////////////////////////////
 // / ENTRY POINT
@@ -193,8 +193,6 @@ fn kmain() -> ! {
 
     sprintln!("Hello World, This is Rust Box");
 
-
-
     loop {
         riscv::interrupt::free(|_| {
             if let Ok(w) = rx.read() {
@@ -210,12 +208,18 @@ fn kmain() -> ! {
                     },
                     _ => {
                         sprint!("{}", w as char);
-                        if w as u8 & 0b00000001 == 1 {
+                        let c = (w % 7) + 1; // 1 to 8
+                        if c as u8 & 1 == 1 {
+                            tleds.2.on();
+                        } else {
+                            tleds.2.off();
+                        }
+                        if c as u8 & 2 == 2 {
                             tleds.1.on();
                         } else {
                             tleds.1.off();
                         }
-                        if w as u8 & 0b00000010 == 2 {
+                        if c as u8 & 4 == 4 {
                             tleds.0.on();
                         } else {
                             tleds.0.off();
