@@ -2,17 +2,16 @@
 #![no_main]
 #![feature(panic_info_message,asm)]
 
-use hifive1::hal::core::clint;
-use hifive1::hal::e310x::CLINT;
+// extern crate panic_halt;
+
+// use hifive1::hal::e310x::interrupt;
 use hifive1::sprint;
-use riscv::register::mstatus;
 use riscv_rt::entry;
 use hifive1::hal::prelude::*;
 use hifive1::hal::DeviceResources;
 use hifive1::{pin, pins, sprintln};
 use hifive1::Led;
-use spin::Mutex;
-use lazy_static::lazy_static;
+use riscv::interrupt;
 
 
 
@@ -48,112 +47,9 @@ fn stop() -> ! {
     }
 }
 
-#[no_mangle]
-fn MachineTimer() {
-    // sprint!(".");
-
-    riscv::interrupt::free(|_| {
-        update_time_compare(CLOCK_SPEED / 50000) 
-        // 50k Timer interupts per second
-        // 
-    })
-}
-
-#[no_mangle]
-fn UserTimer() {
-    sprint!("Ut")
-}
-
-#[no_mangle]
-fn SupervisorTimer() {
-    sprint!("St");
-}
-
-#[no_mangle]
-fn MachineExternal() {
-    sprint!(".");
-}
-
-#[no_mangle]
-fn DefaultHandler() {
-    sprint!("Default!")
-}
-
-// interrupt!(WATCHDOG, periodic);
-
-fn periodic() {
-    sprint!(".");
-}
-
-// interrupt!(UART0, keyboard);
-
-fn keyboard() {
-    sprint!(".");
-}
-
-fn set_priv_to_machine() {
-
-    sprintln!("Machine Priv Mode: {:?}", mstatus::read().mpp());
-    sprintln!("Supervisor Priv Mode: {:?}", mstatus::read().spp());
-    unsafe {
-        sprintln!("Setting to Machine/Supervisor");
-        mstatus::set_mpp(mstatus::MPP::Machine);
-        mstatus::set_spp(mstatus::SPP::Supervisor);
-    }
-    sprintln!("Machine Priv Mode: {:?}", mstatus::read().mpp());
-    sprintln!("Supervisor Priv Mode: {:?}", mstatus::read().spp());
-}
-
-fn enable_risc_interrupts() {
-    unsafe {
-        riscv::register::mie::set_mtimer();
-        riscv::register::mstatus::set_mie();
-        sprintln!("Timer Interrupt Enabled");
-    }
-}
-
-fn update_time_compare(delta: u64) {
-    let current = current_mtime();
-    // sprintln!("Current Time: {}", current);
-    // sprintln!("Current Compare: {}", current_time_cmp());
-
-    let next = current + delta;
-    // sprintln!("Next Compare: {}", next);
-    
-    set_time_cmp(next);
-
-}
-
-fn current_mtime() -> u64 {
-    clint::MTIME.mtime()
-}
-
-fn current_time_cmp() -> u64 {
-    unsafe {
-        let lo = (*CLINT::ptr()).mtimecmp.read().bits() as u64;
-        let hi = (*CLINT::ptr()).mtimecmph.read().bits() as u64;
-        // move `hi` to the upper bits, and then bitwise or with lo
-        hi << 32 | lo
-    }
-}
-
-fn set_time_cmp(value: u64) {
-    unsafe {
-        // Volume II: RISC-V Privileged Architectures V1.10 p.31, figure 3.15
-        (*CLINT::ptr()).mtimecmp.write(|w| w.bits(0xffff_ffff));
-        // Hi bits
-        (*CLINT::ptr()).mtimecmph.write(|w| w.bits((value >> 32) as u32));
-        // Lo bits
-        (*CLINT::ptr()).mtimecmp.write(|w| w.bits(value as u32));
-    }
-}
-
 // ///////////////////////////////////
 // / CONSTANTS
 // ///////////////////////////////////
-
-
-static CLOCK_SPEED: u64 = 320_000_000;
 
 // ///////////////////////////////////
 // / ENTRY POINT
@@ -182,24 +78,26 @@ fn kmain() -> ! {
         clocks,
     );
 
+    // get the sleep struct
+
     let rgb_pins = pins!(pins, (led_red, led_green, led_blue));
     let mut tleds = hifive1::rgb(rgb_pins.0, rgb_pins.1, rgb_pins.2);
 
     tleds.2.on();
-
-    set_priv_to_machine();
-    update_time_compare((clocks.lfclk().0 / 1000) as u64);
-    enable_risc_interrupts();
-
     sprintln!("Hello World, This is Rust Box");
 
 
 
     loop {
-        riscv::interrupt::free(|_| {
+        // unsafe {
+        //     riscv::asm::wfi();
+        // }
+
+        interrupt::free(|_| {
+
             if let Ok(w) = rx.read() {
                 match w {
-                    8 | 127 => {
+                    8 => {
                         sprint!("{}{}{}", 8 as char, ' ', 8 as char);
                     },
                     10 | 13 => {
@@ -224,10 +122,6 @@ fn kmain() -> ! {
                 }
             }
         });
-
-        unsafe {
-            riscv::asm::wfi();
-        }
     }
 }
 
