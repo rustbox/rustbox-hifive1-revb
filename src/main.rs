@@ -4,6 +4,9 @@
 
 use hifive1::hal::core::clint;
 use hifive1::hal::e310x::CLINT;
+use hifive1::hal::e310x::PLIC;
+use hifive1::hal::e310x::Interrupt;
+use hifive1::hal::core::plic::Priority;
 use hifive1::sprint;
 use riscv::register::mstatus;
 use riscv_rt::entry;
@@ -11,6 +14,7 @@ use hifive1::hal::prelude::*;
 use hifive1::hal::DeviceResources;
 use hifive1::{pin, pins, sprintln};
 use hifive1::Led;
+use hifive1::hal::e310x::interrupt;
 use spin::Mutex;
 use lazy_static::lazy_static;
 
@@ -50,12 +54,11 @@ fn stop() -> ! {
 
 #[no_mangle]
 fn MachineTimer() {
-    // sprint!(".");
+    sprint!(".");
 
     riscv::interrupt::free(|_| {
-        update_time_compare(CLOCK_SPEED / 1000) 
+        update_time_compare(CLOCK_SPEED / 1000);
         // 1000 Timer interupts per second
-        // 
     })
 }
 
@@ -71,7 +74,58 @@ fn SupervisorTimer() {
 
 #[no_mangle]
 fn MachineExternal() {
-    sprint!(".");
+    let mut dr = unsafe {
+        DeviceResources::steal()
+    };
+
+    if let Some(interrupt) = dr.core_peripherals.plic.claim.claim() {
+        match interrupt {
+            Interrupt::UART0 => {
+                let pins = dr.pins;
+                let rgb_pins = pins!(pins, (led_red, led_green, led_blue));
+                let mut tleds = hifive1::rgb(rgb_pins.0, rgb_pins.1, rgb_pins.2);
+
+                let w = dr.peripherals.UART0.rxdata.read().data().bits();
+                match w {
+                    8 | 127 => {
+                        sprint!("{}{}{}", 8 as char, ' ', 8 as char);
+                    },
+                    10 | 13 => {
+                        sprintln!();
+                        tleds.0.off();
+                        tleds.1.off();
+                        tleds.2.on();
+                    },
+                    _ => {
+                        sprint!("{}", w as char);
+                        let c = (w % 7) + 1; // 1 to 8
+                        if c as u8 & 1 == 1 {
+                            tleds.2.on();
+                        } else {
+                            tleds.2.off();
+                        }
+                        if c as u8 & 2 == 2 {
+                            tleds.1.on();
+                        } else {
+                            tleds.1.off();
+                        }
+                        if c as u8 & 4 == 4 {
+                            tleds.0.on();
+                        } else {
+                            tleds.0.off();
+                        }
+                    }
+                }
+            }
+            _ => {
+                sprintln!("Unhandled Interrupt Handler for {:?}", interrupt);
+                panic!("Unknown Interrupt Handler");
+            }
+        }
+        dr.core_peripherals.plic.claim.complete(interrupt);
+    } else {
+        panic!("Why is there no interrupt cause??");
+    }
 }
 
 #[no_mangle]
@@ -79,16 +133,9 @@ fn DefaultHandler() {
     sprint!("Default!")
 }
 
-// interrupt!(WATCHDOG, periodic);
-
-fn periodic() {
-    sprint!(".");
-}
-
-// interrupt!(UART0, keyboard);
-
-fn keyboard() {
-    sprint!(".");
+#[no_mangle]
+fn ExceptionHandler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
+    panic!("Exception Found!");
 }
 
 fn set_priv_to_machine() {
@@ -106,9 +153,14 @@ fn set_priv_to_machine() {
 
 fn enable_risc_interrupts() {
     unsafe {
-        riscv::register::mie::set_mtimer();
+        // riscv::register::mie::set_mtimer();
+        riscv::register::mie::set_mext();
+        riscv::register::mie::set_sext();
+        riscv::register::mie::set_uext();
         riscv::register::mstatus::set_mie();
-        sprintln!("Timer Interrupt Enabled");
+        riscv::register::mstatus::set_sie();
+        riscv::register::mstatus::set_uie();
+        sprintln!("Interrupts Enabled");
     }
 }
 
@@ -166,16 +218,15 @@ fn kmain() -> ! {
     // ready to start scheduling. The last thing this
     // should do is start the timer.
 
-    let dr = DeviceResources::take().unwrap();
+    let mut dr = DeviceResources::take().unwrap();
     let p = dr.peripherals;
     let pins = dr.pins;
 
     // Configure clocks
     let clocks = hifive1::clock::configure(p.PRCI, p.AONCLK, 320.mhz().into());
 
-    // Configure UART for stdout
-    let mut rx = hifive1::stdout::configure(
-        p.UART0,
+    // Configure UART0 for stdout
+    let _ = hifive1::stdout::configure(p.UART0,
         pin!(pins, uart0_tx),
         pin!(pins, uart0_rx),
         115_200.bps(),
@@ -188,47 +239,30 @@ fn kmain() -> ! {
     tleds.2.on();
 
     set_priv_to_machine();
-    update_time_compare((clocks.lfclk().0 / 1000) as u64);
+
+    dr.core_peripherals.plic.mext.enable();
+
+    unsafe {
+        let dr = DeviceResources::steal();
+        let uart = dr.peripherals.UART0;
+        // En
+        uart.ie.write(|w| w.txwm().bit(false).rxwm().bit(true));
+        uart.rxctrl.write(|w| w.enable().bit(true).counter().bits(0));
+
+        let mut plic = dr.core_peripherals.plic;
+        plic.uart0.enable();
+        plic.uart0.set_priority(Priority::P4);
+
+        plic.threshold.set(Priority::P0);
+    }
+    dr.core_peripherals.plic.threshold.set(hifive1::hal::core::plic::Priority::P0);
+    assert_eq!(0, unsafe {(*PLIC::ptr()).threshold.read().bits()});
+
     enable_risc_interrupts();
 
     sprintln!("Hello World, This is Rust Box");
 
     loop {
-        riscv::interrupt::free(|_| {
-            if let Ok(w) = rx.read() {
-                match w {
-                    8 | 127 => {
-                        sprint!("{}{}{}", 8 as char, ' ', 8 as char);
-                    },
-                    10 | 13 => {
-                        sprintln!();
-                        tleds.0.off();
-                        tleds.1.off();
-                        tleds.2.on();
-                    },
-                    _ => {
-                        sprint!("{}", w as char);
-                        let c = (w % 7) + 1; // 1 to 8
-                        if c as u8 & 1 == 1 {
-                            tleds.2.on();
-                        } else {
-                            tleds.2.off();
-                        }
-                        if c as u8 & 2 == 2 {
-                            tleds.1.on();
-                        } else {
-                            tleds.1.off();
-                        }
-                        if c as u8 & 4 == 4 {
-                            tleds.0.on();
-                        } else {
-                            tleds.0.off();
-                        }
-                    }
-                }
-            }
-        });
-
         unsafe {
             riscv::asm::wfi();
         }

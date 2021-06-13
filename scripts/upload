@@ -46,3 +46,4 @@ $gdb $elf --batch -ex "set remotetimeout 240" -ex "target extended-remote localh
 kill %1
 
 fi
+echo
