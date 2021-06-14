@@ -200,6 +200,30 @@ fn set_time_cmp(value: u64) {
     }
 }
 
+fn configure_plic_interrupt_enable() {
+    
+    unsafe {
+        let dr = DeviceResources::steal();
+        let mut plic = dr.core_peripherals.plic;
+        plic.mext.enable();
+        plic.threshold.set(Priority::P0);
+    }
+    assert_eq!(0, unsafe {(*PLIC::ptr()).threshold.read().bits()});
+}
+
+fn configure_uart_receiver_interrupt_enable() {
+    unsafe {
+        let dr = DeviceResources::steal();
+        let uart = dr.peripherals.UART0;
+        let mut plic = dr.core_peripherals.plic;
+
+        plic.uart0.enable();
+        plic.uart0.set_priority(Priority::P4);
+        uart.ie.write(|w| w.txwm().bit(false).rxwm().bit(true));
+        uart.rxctrl.write(|w| w.enable().bit(true).counter().bits(0));
+    }
+}
+
 // ///////////////////////////////////
 // / CONSTANTS
 // ///////////////////////////////////
@@ -218,7 +242,7 @@ fn kmain() -> ! {
     // ready to start scheduling. The last thing this
     // should do is start the timer.
 
-    let mut dr = DeviceResources::take().unwrap();
+    let dr = DeviceResources::take().unwrap();
     let p = dr.peripherals;
     let pins = dr.pins;
 
@@ -236,29 +260,14 @@ fn kmain() -> ! {
     let rgb_pins = pins!(pins, (led_red, led_green, led_blue));
     let mut tleds = hifive1::rgb(rgb_pins.0, rgb_pins.1, rgb_pins.2);
 
-    tleds.2.on();
-
+    
     set_priv_to_machine();
-
-    dr.core_peripherals.plic.mext.enable();
-
-    unsafe {
-        let dr = DeviceResources::steal();
-        let uart = dr.peripherals.UART0;
-        // En
-        uart.ie.write(|w| w.txwm().bit(false).rxwm().bit(true));
-        uart.rxctrl.write(|w| w.enable().bit(true).counter().bits(0));
-
-        let mut plic = dr.core_peripherals.plic;
-        plic.uart0.enable();
-        plic.uart0.set_priority(Priority::P4);
-
-        plic.threshold.set(Priority::P0);
-    }
-    dr.core_peripherals.plic.threshold.set(hifive1::hal::core::plic::Priority::P0);
-    assert_eq!(0, unsafe {(*PLIC::ptr()).threshold.read().bits()});
-
+    configure_plic_interrupt_enable();
+    configure_uart_receiver_interrupt_enable();
+    
     enable_risc_interrupts();
+
+    tleds.2.on();
 
     sprintln!("Hello World, This is Rust Box");
 
