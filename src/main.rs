@@ -140,14 +140,11 @@ fn ExceptionHandler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
 fn set_priv_to_machine() {
 
     sprintln!("Machine Priv Mode: {:?}", mstatus::read().mpp());
-    sprintln!("Supervisor Priv Mode: {:?}", mstatus::read().spp());
     unsafe {
         sprintln!("Setting to Machine/Supervisor");
         mstatus::set_mpp(mstatus::MPP::Machine);
-        mstatus::set_spp(mstatus::SPP::Supervisor);
     }
     sprintln!("Machine Priv Mode: {:?}", mstatus::read().mpp());
-    sprintln!("Supervisor Priv Mode: {:?}", mstatus::read().spp());
 }
 
 fn enable_risc_interrupts() {
