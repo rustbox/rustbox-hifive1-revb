@@ -73,58 +73,60 @@ fn SupervisorTimer() {
 
 #[no_mangle]
 fn MachineExternal() {
-    let mut dr = unsafe {
-        DeviceResources::steal()
-    };
-
-    if let Some(interrupt) = dr.core_peripherals.plic.claim.claim() {
-        match interrupt {
-            Interrupt::UART0 => {
-                let pins = dr.pins;
-                let rgb_pins = pins!(pins, (led_red, led_green, led_blue));
-                let mut tleds = hifive1::rgb(rgb_pins.0, rgb_pins.1, rgb_pins.2);
-
-                let w = dr.peripherals.UART0.rxdata.read().data().bits();
-                match w {
-                    8 | 127 => {
-                        sprint!("{}{}{}", 8 as char, ' ', 8 as char);
-                    },
-                    10 | 13 => {
-                        sprintln!();
-                        tleds.0.off();
-                        tleds.1.off();
-                        tleds.2.on();
-                    },
-                    _ => {
-                        sprint!("{}", w as char);
-                        let c = (w % 7) + 1; // 1 to 8
-                        if c as u8 & 1 == 1 {
-                            tleds.2.on();
-                        } else {
-                            tleds.2.off();
-                        }
-                        if c as u8 & 2 == 2 {
-                            tleds.1.on();
-                        } else {
-                            tleds.1.off();
-                        }
-                        if c as u8 & 4 == 4 {
-                            tleds.0.on();
-                        } else {
+    riscv::interrupt::free(|_| {
+        let mut dr = unsafe {
+            DeviceResources::steal()
+        };
+    
+        if let Some(interrupt) = dr.core_peripherals.plic.claim.claim() {
+            match interrupt {
+                Interrupt::UART0 => {
+                    let pins = dr.pins;
+                    let rgb_pins = pins!(pins, (led_red, led_green, led_blue));
+                    let mut tleds = hifive1::rgb(rgb_pins.0, rgb_pins.1, rgb_pins.2);
+    
+                    let w = dr.peripherals.UART0.rxdata.read().data().bits();
+                    match w {
+                        8 | 127 => {
+                            sprint!("{}{}{}", 8 as char, ' ', 8 as char);
+                        },
+                        10 | 13 => {
+                            sprintln!();
                             tleds.0.off();
+                            tleds.1.off();
+                            tleds.2.on();
+                        },
+                        _ => {
+                            sprint!("{}", w as char);
+                            let c = (w % 7) + 1; // 1 to 8
+                            if c as u8 & 1 == 1 {
+                                tleds.2.on();
+                            } else {
+                                tleds.2.off();
+                            }
+                            if c as u8 & 2 == 2 {
+                                tleds.1.on();
+                            } else {
+                                tleds.1.off();
+                            }
+                            if c as u8 & 4 == 4 {
+                                tleds.0.on();
+                            } else {
+                                tleds.0.off();
+                            }
                         }
                     }
                 }
+                _ => {
+                    sprintln!("Unhandled Interrupt Handler for {:?}", interrupt);
+                    panic!("Unknown Interrupt Handler");
+                }
             }
-            _ => {
-                sprintln!("Unhandled Interrupt Handler for {:?}", interrupt);
-                panic!("Unknown Interrupt Handler");
-            }
+            dr.core_peripherals.plic.claim.complete(interrupt);
+        } else {
+            panic!("Why is there no interrupt cause??");
         }
-        dr.core_peripherals.plic.claim.complete(interrupt);
-    } else {
-        panic!("Why is there no interrupt cause??");
-    }
+    })
 }
 
 #[no_mangle]
