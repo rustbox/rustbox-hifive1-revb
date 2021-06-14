@@ -54,8 +54,7 @@ fn stop() -> ! {
 
 #[no_mangle]
 fn MachineTimer() {
-    sprint!(".");
-
+    // sprint!(".");
     riscv::interrupt::free(|_| {
         update_time_compare(CLOCK_SPEED / 1000);
         // 1000 Timer interupts per second
@@ -153,12 +152,10 @@ fn set_priv_to_machine() {
 
 fn enable_risc_interrupts() {
     unsafe {
-        // riscv::register::mie::set_mtimer();
+        riscv::register::mie::set_mtimer();
         riscv::register::mie::set_mext();
-        riscv::register::mie::set_sext();
         riscv::register::mie::set_uext();
         riscv::register::mstatus::set_mie();
-        riscv::register::mstatus::set_sie();
         riscv::register::mstatus::set_uie();
         sprintln!("Interrupts Enabled");
     }
@@ -195,7 +192,7 @@ fn set_time_cmp(value: u64) {
         (*CLINT::ptr()).mtimecmp.write(|w| w.bits(0xffff_ffff));
         // Hi bits
         (*CLINT::ptr()).mtimecmph.write(|w| w.bits((value >> 32) as u32));
-        // Lo bits
+        // Loupdate_time_compare bits
         (*CLINT::ptr()).mtimecmp.write(|w| w.bits(value as u32));
     }
 }
@@ -205,7 +202,6 @@ fn configure_plic_interrupt_enable() {
     unsafe {
         let dr = DeviceResources::steal();
         let mut plic = dr.core_peripherals.plic;
-        plic.mext.enable();
         plic.threshold.set(Priority::P0);
     }
     assert_eq!(0, unsafe {(*PLIC::ptr()).threshold.read().bits()});
@@ -264,7 +260,7 @@ fn kmain() -> ! {
     set_priv_to_machine();
     configure_plic_interrupt_enable();
     configure_uart_receiver_interrupt_enable();
-    
+    update_time_compare(CLOCK_SPEED / 1000);
     enable_risc_interrupts();
 
     tleds.2.on();

@@ -116,7 +116,7 @@ fn main() -> ! {
 
         let rplic = &*hifive1::hal::e310x::PLIC::ptr();
         for p in rplic.priority.iter() {
-            p.write(|w| w.bits(0));
+            p.write(|w| w.bits(Priority::P0.into()));
         }
 
         let mut plic = CorePeripherals::steal().plic;
