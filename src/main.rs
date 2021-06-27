@@ -185,6 +185,31 @@ fn current_time_cmp() -> u64 {
     }
 }
 
+fn enabled_plic_interrupts() -> [(Interrupt, bool); 52] {
+    let (enable1, enable2) = unsafe {
+        let en = &(*PLIC::ptr()).enable;
+        (en[0].read().bits(), en[1].read().bits())
+    };
+    let mut interrupts: [(Interrupt, bool); 52] = [(Interrupt::GPIO0, false); 52];
+    for ext in 0..32 {
+        let i: usize = 1 << ext;
+        let is_enabled = i & (enable1 as usize) == i;
+        match Interrupt::try_from(1 + ext as u8) {
+            Ok(t) => {interrupts[ext] = (t, is_enabled)},
+            Err(_) => {sprintln!("error: {}", 1 + ext)}
+        }
+    }
+    for ext in 0..21 {
+        let i: usize = 1 << ext;
+        let is_enabled = i & (enable2 as usize) == i;
+        match Interrupt::try_from(1 + 32 + ext as u8) {
+            Ok(t) => {interrupts[ext + 32] = (t, is_enabled)},
+            Err(_) => {sprintln!("error: {}", 1 + ext)}
+        }
+    }
+    interrupts
+}
+
 fn set_time_cmp(value: u64) {
     unsafe {
         // Volume II: RISC-V Privileged Architectures V1.10 p.31, figure 3.15
@@ -196,7 +221,7 @@ fn set_time_cmp(value: u64) {
     }
 }
 
-fn configure_plic_interrupt_enable() {
+fn initialize_plic_enable_and_threshold() {
     
     unsafe {
         let dr = DeviceResources::steal();
@@ -204,6 +229,12 @@ fn configure_plic_interrupt_enable() {
         plic.threshold.set(Priority::P0);
     }
     assert_eq!(0, unsafe {(*PLIC::ptr()).threshold.read().bits()});
+    unsafe {
+        (*PLIC::ptr()).enable[0].write(|w| w.bits(0));
+        (*PLIC::ptr()).enable[1].write(|w| w.bits(0));
+    }
+    assert_eq!(0, unsafe {(*PLIC::ptr()).enable[0].read().bits()});
+    assert_eq!(0, unsafe {(*PLIC::ptr()).enable[1].read().bits()});
 }
 
 fn configure_uart_receiver_interrupt_enable() {
@@ -257,8 +288,10 @@ fn kmain() -> ! {
 
     
     set_priv_to_machine();
-    configure_plic_interrupt_enable();
+    initialize_plic_enable_and_threshold();
     configure_uart_receiver_interrupt_enable();
+    let enableds = enabled_plic_interrupts();
+    sprintln!("{:?}", enableds);
     update_time_compare(CLOCK_SPEED / 1000);
     enable_risc_interrupts();
 
