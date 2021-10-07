@@ -1,5 +1,6 @@
 MEMORY
 {
+    ITIM : ORIGIN = 0x08000000, LENGTH = 8K
     FLASH : ORIGIN = 0x20010000, LENGTH = 4M
     RAM : ORIGIN = 0x80000000, LENGTH = 16K
 }
@@ -13,3 +14,4 @@ REGION_ALIAS("REGION_STACK", RAM);
 
 /* Skip first 64k allocated for bootloader */
 _stext = 0x20010000;
+_heap_size = 13K;

@@ -1,0 +1,33 @@
+[package]
+name = "vgaterm"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-hal = "0.2.3"
+hifive1 = { version = "0.10.0", features = ["board-hifive1-revb"] }
+panic-halt = "0.2.0"
+riscv = "0.7.0"
+riscv-rt = "0.8.0"
+linked_list_allocator = "0.9.0"
+volatile = "0.4.4"
+
+[dependencies.spin]
+version = "0.9.0"
+features = ["mutex", "spin_mutex"]
+
+[dependencies.lazy_static]
+version = "1.4"
+features = ["spin_no_std"]
+# e310x = "0.9.0"
+
+# this lets you use `cargo fix`!
+# [[bin]]
+# name = "rustbox-hifive1-revb"
+# test = false
+# bench = false
+
+# [lib]
+# crate-type = ["staticlib"]

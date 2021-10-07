@@ -1,5 +1,5 @@
 
-NAME = rustbox-hifive1-revb
+NAME ?= rustbox
 RISCV_GNU_TOOLCHAIN ?= $(RISCV_PATH)
 CARGO_OPTS ?= ""
 
@@ -23,3 +23,5 @@ upload:
 	$(RISCV_GNU_TOOLCHAIN)/bin/riscv64-unknown-elf-objcopy -O ihex target/riscv32imac-unknown-none-elf/debug/$(NAME) target/riscv32imac-unknown-none-elf/debug/$(NAME).hex
 	scripts/upload --hex target/riscv32imac-unknown-none-elf/debug/$(NAME).hex --jlink JLinkExe
 
+screen:
+	sudo screen /dev/ttyACM0 115200

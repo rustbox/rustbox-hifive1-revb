@@ -1,14 +1,20 @@
 #![no_std]
 #![no_main]
-#![feature(panic_info_message,asm)]
+#![feature(panic_info_message,asm,alloc_error_handler,alloc_prelude)]
 
+use alloc::string::String;
 use hifive1::hal::core::clint;
 use hifive1::hal::e310x::CLINT;
 use hifive1::hal::e310x::PLIC;
 use hifive1::hal::e310x::Interrupt;
 use hifive1::hal::core::plic::Priority;
 use hifive1::sprint;
+use riscv::register::mcause;
+use riscv::register::mcause::Exception;
 use riscv::register::mstatus;
+use riscv::register::mtval;
+use riscv::register::pmpcfg0;
+use riscv::register::satp;
 use riscv_rt::entry;
 use hifive1::hal::prelude::*;
 use hifive1::hal::DeviceResources;
@@ -17,8 +23,25 @@ use hifive1::Led;
 use hifive1::hal::e310x::interrupt;
 use spin::Mutex;
 use lazy_static::lazy_static;
+use linked_list_allocator::LockedHeap;
+use alloc::alloc::{GlobalAlloc, Layout};
+use alloc::prelude::v1::*;
+
+extern crate alloc;
 
 
+#[alloc_error_handler]
+fn alloc_error(layout: Layout) -> ! {
+    panic!("Bad Allocation! layout: {:?}", layout);
+}
+
+#[global_allocator]
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
+
+extern "C" {
+    static _heap_size: usize;
+    static _sheap: usize;
+}
 
 #[no_mangle]
 extern "C" fn eh_personality() {}
@@ -54,7 +77,7 @@ fn stop() -> ! {
 
 #[no_mangle]
 fn MachineTimer() {
-    // sprint!(".");
+    sprint!(".");
     riscv::interrupt::free(|_| {
         update_time_compare(CLOCK_SPEED / 1000);
         // 1000 Timer interupts per second
@@ -135,8 +158,10 @@ fn DefaultHandler() {
 }
 
 #[no_mangle]
-fn ExceptionHandler(_trap_frame: &riscv_rt::TrapFrame) -> ! {
-    panic!("Exception Found!");
+fn ExceptionHandler(trap_frame: &riscv_rt::TrapFrame) -> ! {
+    let cause = Exception::from(mcause::read().code());
+    let mv = mtval::read();
+    panic!("Exception Found! Cause: {:?}, Value: {:#08X}", cause, mv);
 }
 
 fn set_priv_to_machine() {
@@ -169,7 +194,6 @@ fn update_time_compare(delta: u64) {
     // sprintln!("Next Compare: {}", next);
     
     set_time_cmp(next);
-
 }
 
 fn current_mtime() -> u64 {
@@ -250,6 +274,15 @@ fn configure_uart_receiver_interrupt_enable() {
     }
 }
 
+/// Align (set to a multiple of some power of two)
+/// This takes an order which is the exponent to 2^order
+/// Therefore, all alignments must be made as a power of two.
+/// This function always rounds up.
+pub const fn align_val(val: usize, order: usize) -> usize {
+	let o = (1usize << order) - 1;
+	(val + o) & !o
+}
+
 // ///////////////////////////////////
 // / CONSTANTS
 // ///////////////////////////////////
@@ -286,6 +319,21 @@ fn kmain() -> ! {
     let rgb_pins = pins!(pins, (led_red, led_green, led_blue));
     let mut tleds = hifive1::rgb(rgb_pins.0, rgb_pins.1, rgb_pins.2);
 
+    sprintln!("We changed something!");
+
+    unsafe {
+        // pmpcfg0::read().
+        // let m = satp::read().bits();
+
+        // sprintln!("Mode is {:?}", m);
+        // let start = &_sheap as *const usize;
+        // let size = &_heap_size as *const usize;
+        // let aligned_start = align_val(start as usize, 5);
+        // let aligned_size = (size as usize + start as usize).saturating_sub(aligned_start);
+        // sprintln!("Heap Start {:#08x}", start as usize);
+        // sprintln!("Heap Size {:#08x}", size as usize);
+        // ALLOCATOR.lock().init(start as usize, size as usize);
+    }
     
     set_priv_to_machine();
     initialize_plic_enable_and_threshold();
@@ -297,7 +345,17 @@ fn kmain() -> ! {
 
     tleds.2.on();
 
-    sprintln!("Hello World, This is Rust Box");
+    sprintln!("Welcome to Rust Box");
+    sprintln!("Hello world");
+    sprintln!("Clock speed measured: {}", clocks.measure_coreclk().0);
+
+    // let greeting = String::from("Hello World");
+    
+    // let greet_loc = &greeting as *const String;
+    // sprintln!("greet location: {:?}", greet_loc);
+    
+
+    // sprintln!("{}", greeting);
 
     loop {
         unsafe {
