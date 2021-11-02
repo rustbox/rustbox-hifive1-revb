@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(panic_info_message,asm,alloc_error_handler,alloc_prelude)]
 
+use core::sync::atomic::AtomicBool;
+
 use alloc::string::String;
 use hifive1::hal::core::clint;
 use hifive1::hal::e310x::CLINT;

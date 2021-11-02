@@ -14,4 +14,4 @@ REGION_ALIAS("REGION_STACK", RAM);
 
 /* Skip first 64k allocated for bootloader */
 _stext = 0x20010000;
-_heap_size = 13K;
+/*_heap_size = 12K; */

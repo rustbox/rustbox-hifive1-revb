@@ -9,6 +9,7 @@ use hifive1::hal::DeviceResources;
 use hifive1::{pin, sprintln};
 use riscv_rt::entry;
 use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering;
 
 
 
@@ -36,13 +37,19 @@ fn main() -> ! {
 
     sprintln!("This is a float {}", afloat);
 
-    let mut foo = AtomicBool::new(true);
-    let realfoo = foo.get_mut();
-    sprintln!("found {}", realfoo);
+    let r = foo_test();
+    sprintln!("found {:?}", r);
+
 
     loop {
         unsafe {
             riscv::asm::wfi();
         }
     }
+}
+
+#[no_mangle]
+fn foo_test() -> Result<bool, bool> {
+    let mut foo = AtomicBool::new(true);
+    foo.compare_exchange(true, false, Ordering::Acquire, Ordering::Acquire)
 }
