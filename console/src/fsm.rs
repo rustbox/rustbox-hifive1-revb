@@ -1,6 +1,6 @@
 use crate::tree::{NodeID, Tree};
 
-use hifive1::{sprint, sprintln};
+use hifive1::sprintln;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Input {
@@ -59,10 +59,12 @@ pub enum Output {
     HOME,
     F1,
     ESC,
-    CURSOR_RIGHT(u8),
-    CURSOR_LEFT(u8),
-    CURSOR_UP(u8),
-    CURSOR_DOWN(u8)
+    CursorRight(u8),
+    CursorLeft(u8),
+    CursorUp(u8),
+    CursorDown(u8),
+    INSERT,
+    EraseFromCursor
 }
 
 
@@ -82,12 +84,6 @@ enum Node<K, V> {
 }
 
 
-struct Traversal<K, A> {
-    from: K,
-    to: K,
-    action: A
-}
-
 /// Represents the state of the control sequence parser. If the Machine
 /// is in the middle of detecting a control sequence, then that is `InSequence`.
 /// Otherwise if the Machine is receiving normal input, this is the `Listening` state.
@@ -105,12 +101,8 @@ pub struct Trie<K: Default + Copy + PartialEq + core::fmt::Debug, V> {
 impl<K: Default + Copy + PartialEq + core::fmt::Debug, V: Copy> Trie<K, V> {
     pub fn new() -> Trie<K, V> {
         let root = K::default();
-        sprintln!("Hello, about to make graphlib::Graph in new Trie");
         let mut t = Tree::new();
         let rid = t.add_node(Node::Node(root));
-        sprintln!("Added root {:?}", rid);
-        sprintln!("size: {}", t.node_count());
-        
 
         Trie {
             current_state: rid,
@@ -148,7 +140,6 @@ impl<K: Default + Copy + PartialEq + core::fmt::Debug, V: Copy> Trie<K, V> {
 
         while !is_last(on_deck) {
             // who are vid's neighbors, and if current == the value of a neighbor, then we've already added current
-            sprintln!("node ID: {:?}", vid);
             let mut already_found = false;
             for neighbor in self.tree.children(&vid) {
                 if let Some(n_node) = self.tree.fetch(neighbor) {
@@ -167,9 +158,7 @@ impl<K: Default + Copy + PartialEq + core::fmt::Debug, V: Copy> Trie<K, V> {
             }
 
             if !already_found {
-                sprintln!("About to add vertex for {:?}", current);
                 let id = self.tree.add_child(&vid, Node::Node(current)).unwrap();
-                sprintln!("Added edge");
                 // Switch current vid with the id we just added
                 vid = id;
             }

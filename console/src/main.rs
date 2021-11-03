@@ -5,7 +5,6 @@
 use core::alloc::GlobalAlloc;
 
 use alloc::string::String;
-use alloc::vec;
 use heapless;
 use heapless::Vec;
 use hifive1::Led;
@@ -24,14 +23,9 @@ use riscv_rt::entry;
 use buddyalloc::Heap;
 
 extern crate alloc;
-#[macro_use]
-extern crate lazy_static;
 
 use alloc::alloc::Layout;
 use terminal::Terminal;
-
-use crate::fsm::Input;
-use crate::fsm::Output;
 
 mod repl;
 mod input;
@@ -130,42 +124,8 @@ fn MachineTimer() {
     });
 }
 
-fn read(bytes: u8, buffer: &mut LineBuffer) -> Vec<u8, 256> {
-    block_until(|| { buffer.len() > 0 });
-
-    let mut data = Vec::new();
-    let mut read_so_far = 0;
-    while read_so_far < bytes && buffer.len() > 0 {
-        match buffer.read_next() {
-            Some(c) => {
-                let _ = data.push(c);
-                read_so_far += 1;
-            }
-            None => {}
-        }
-    }
-
-    data
-}
-
-// fn getchar() -> u8 {
-//     unsafe {
-//         if let Some(buffer) = &mut INPUT_BUFFER {
-//             read(1, buffer)[0]
-//         } else {
-//             0
-//         }
-//     }
-// }
-
 fn read_line() -> String {
-    // sprintln!("Entering read_line");
     let mut s = String::new();
-    // sprintln!("Allocated new String");
-    // let already_locked = TERMINAL.is_locked();
-    // sprintln!("Already locked? {}", already_locked);
-    // let mut term = TERMINAL.lock();
-    // sprintln!("Terminal lock acquired!");
     unsafe {
         if let Some(ref mut term) = TERMINAL {
             term.read_line(&mut s); 
@@ -173,8 +133,6 @@ fn read_line() -> String {
     }
     s
 }
-
-static mut UART_INTS: u8 = 0;
 
 #[no_mangle]
 fn MachineExternal() {
@@ -186,67 +144,13 @@ fn MachineExternal() {
         if let Some(interrupt) = dr.core_peripherals.plic.claim.claim() {
             match interrupt {
                 Interrupt::UART0 => {
-                    unsafe {
-                        UART_INTS += 1;
-                    }
+
                     let w = dr.peripherals.UART0.rxdata.read().data().bits();
-                    // Unlock Terminal
-                    // sprintln!("Terminal lock acquired");
-                    // sprint!("`{}`", w);
                     unsafe {
                         if let Some(ref mut term) = TERMINAL {
                             term.input(w);
                         }
                     }
-                    // match w {
-                    //     8  => {
-                    //         unsafe {
-                    //             if let Some(buff) = &mut INPUT_BUFFER {
-                    //                 if buff.len() > 0 {
-                    //                     sprintln!("backspace!");
-                    //                     sprint!("{}{}{}", 8 as char, ' ', 8 as char);
-                    //                     buff.backspace();
-                    //                 }
-                    //             }
-                    //         }
-                    //     },
-                    //     127 => {
-                    //         unsafe {
-                    //             if let Some(buff) = &mut INPUT_BUFFER {
-                    //                 if buff.len() > 0 {
-                    //                     // sprintln!("delete!");
-                    //                     // buff.delete();
-                    //                     // ANSI code for going to the beginning of the line
-                    //                     // sprint!("{}[{}D", 27 as char, buff.cursor_position());
-                    //                     // Print the contents of the buffer
-                    //                     for c in buff.slice() {
-                    //                         // sprint!("{}", *c as char)
-                    //                     }
-                    //                     // Reposition the cursor to the original position
-                    //                     // sprint!("{}[{}C", 27 as char, buff.len() - buff.cursor_position());
-                    //                 }
-                    //             }
-                    //         }
-                    //     }
-                    //     10 | 13 => {
-                    //         sprintln!();
-                    //         unsafe {
-                    //             if let Some(buff) = &mut INPUT_BUFFER {
-                    //                 buff.push(w);
-                    //             }
-                    //         }
-
-                    //     },
-                    //     _ => {
-                    //         sprint!("{}", w as char);
-                    //         unsafe {
-                    //             if let Some(buff) = &mut INPUT_BUFFER {
-                    //                 buff.push(w);
-                    //             }
-                    //         }
-                    //     }
-                    // }
-
                 },
                 Interrupt::PWM1CMP1 => {
                     let pwms1 = dr.peripherals.PWM1.pwms.read().bits();
@@ -361,7 +265,6 @@ fn enable_pmw_interrupt(pwm: u32, cmp: u32) {
     }
 }
 
-// fn enable_gpio_interrupt()
 
 fn enable_risc_interrupts() {
     unsafe {
@@ -393,17 +296,6 @@ pub fn block_until<F>(f: F)
         }
     }
 }
-
-// fn get_line() -> heapless::String<256> {
-//     unsafe {
-
-//         block_until(|| {
-//             !STD_IN.is_empty()
-//         });
-
-//         STD_IN.pop_back().unwrap()
-//     }
-// }
 
 fn delay(ms: u32) {
     let ticks = ((ms as u64) * CLOCK_SPEED) / 1000;
@@ -441,8 +333,6 @@ fn kmain() -> ! {
     let p = dr.peripherals;
     let pins = dr.pins;
 
-    
-
     // Configure clocks
     let clocks = hifive1::clock::configure(p.PRCI, p.AONCLK, 320_000.khz().into());
 
@@ -475,31 +365,6 @@ fn kmain() -> ! {
     update_time_compare(CLOCK_SPEED / 1000);
     enable_risc_interrupts();
 
-    
-
-    // let mut v = vec![1, 2, 4];
-    // sprintln!("Made a vector! {:?}", v);
-
-    // v.push(92);
-    // sprintln!("after push {:?}", v);
-
-    // let vpoint = core::ptr::addr_of!(v);
-    // let vpoint: *const vec::Vec<i32> = &v;
-    // sprintln!("address of vector: {:?}", vpoint);
-
-    // let mut hs: hashbrown::HashMap<Input, Output> = hashbrown::HashMap::new();
-    // hs.insert(Input::ESC, Output::ESC);
-    // sprintln!("{:?}", hs);
-
-    // let mut t: tree::Tree<char> = tree::Tree::new();
-    // let h = t.add_node('h');
-    // let e = t.add_child(h, 'e').unwrap();
-    // let l = t.add_child(h, 'l').unwrap();
-    // sprintln!("h = {:?}, e = {:?}, l = {:?}", h, e, l);
-    // sprintln!("children ID of h: {:?}", t.children(h));
-    // let ch: vec::Vec<&char> = t.child_iter(h).collect();
-    // sprintln!("children of h: {:?}", ch );
-
     loop {
         unsafe {
             riscv::asm::wfi();
@@ -507,6 +372,6 @@ fn kmain() -> ! {
 
         sprint!("Enter your name: ");
         let name = read_line();
-        sprintln!("Hello, {}", name);
+        sprintln!("Hello, {}", name.trim());
     }
 }

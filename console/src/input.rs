@@ -2,26 +2,12 @@
 pub const BUFFER_SIZE: usize = 256;
 
 use heapless::{Deque, Vec};
-use hifive1::sprintln;
 
 pub struct LineBuffer {
     buffer: Vec<u8, BUFFER_SIZE>,
     /// Cursor is the position in the buffer where the next pushed character is about to go
     cursor: u8,
     out: Deque<u8, BUFFER_SIZE>,
-    settings: Settings
-}
-
-struct Settings {
-    buffer_input: bool
-}
-
-impl Default for Settings {
-    fn default() -> Settings {
-        Settings {
-            buffer_input: true
-        }
-    }
 }
 
 
@@ -29,9 +15,8 @@ impl LineBuffer {
     pub fn new() -> LineBuffer {
         LineBuffer {
             buffer: Vec::new(),
-            cursor: 1,
+            cursor: 0,
             out: Deque::new(),
-            settings: Settings::default()
         }
     }
 
@@ -42,16 +27,20 @@ impl LineBuffer {
     /// 
     /// If the cursor is at the end of the buffer then we merely push the character onto the end of the buffer
     pub fn push(&mut self, c: u8) {
-
         if c == 10 || c == 13 {
-            let (contents, length) = self.flush();
-            for i  in 0..length as usize {
-                let _ = self.out.push_front(contents[i]);
+            // Only flush if we have contents
+            if self.len() > 0 {
+                let (contents, length) = self.flush();
+                for i  in 0..length as usize {
+                    let _ = self.out.push_front(contents[i]);
+                }
+                let _ = self.out.push_front('\n' as u8);
             }
-            let _ = self.out.push_front('\n' as u8);
         } else {
             self.cursor = self.cursor.clamp(0, self.buffer.len() as u8);
+            // add character to the end of the buffer
             let _ = self.buffer.push(c);
+            debug_assert!(self.buffer.len() > 0);
 
             let mut i = self.buffer.len() - 1;
             while i as u8 > self.cursor {
@@ -79,16 +68,18 @@ impl LineBuffer {
 
     /// In place remove byte. Cursor stays at the same position.
     /// If cursor is at the end, delete does nothing.
-    pub fn delete(&mut self) {
-        self.remove(self.cursor as usize);
+    pub fn delete(&mut self) -> Option<u8> {
+        self.remove(self.cursor as usize)
     }
 
     /// Moves cursor back one while removing byte that is behind cursor.
     /// If Cursor is at beginning of buffer, then backspace does nothing.
-    pub fn backspace(&mut self) {
+    pub fn backspace(&mut self) -> Option<u8> {
         if self.cursor > 0 {
-            self.remove(self.cursor as usize - 1);
             self.cursor -= 1;
+            self.remove(self.cursor as usize)
+        } else {
+            None
         }
     }
 
@@ -98,13 +89,23 @@ impl LineBuffer {
     }
 
     pub fn move_cursor_left(&mut self, amount: u8) -> u8 {
-        self.cursor = (self.cursor - amount).clamp(0, self.buffer.len() as u8-1);
-        self.cursor
+        let amt = amount.clamp(0, self.cursor);
+        self.cursor -= amt;
+        amt
     }
 
     pub fn move_cursor_right(&mut self, amount: u8) -> u8 {
-        self.cursor = (self.cursor + amount).clamp(0, self.buffer.len() as u8-1);
-        self.cursor
+        // sprintln!("cursor: {}, buffer: {}", self.cursor, self.buffer.len());
+        let right_bound = if self.buffer.len() > 0 {
+            self.buffer.len()
+        } else {
+            0
+        };
+        debug_assert!(right_bound as u8 >= self.cursor, "The `right_bound` {} < `cursor` {}; buffer len is {}", right_bound, self.cursor, self.buffer.len());
+        let max = right_bound as u8 - self.cursor;
+        let amt = amount.clamp(0, max);
+        self.cursor += amt;
+        amt
     }
 
     pub fn cursor_position(&self) -> u8 {
@@ -143,6 +144,10 @@ impl LineBuffer {
 
     pub fn slice(&self) -> &[u8] {
         self.buffer.as_slice()
+    }
+
+    pub fn slice_from_cursor(&self) -> &[u8] {
+        &self.buffer[self.cursor as usize..self.buffer.len()]
     }
 
     pub fn len(&self) -> u8 {

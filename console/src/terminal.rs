@@ -1,6 +1,6 @@
 use core::str;
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use hifive1::{sprint, sprintln};
 
@@ -11,10 +11,12 @@ use crate::block_until;
 static CONTROL_SEQUENCES: &[(&[&str], Output)] = &[
     (&["ESC", "ESC"], Output::ESC),
     (&["ESC", "[", "3", "~"], Output::DEL),
-    (&["ESC", "[", "D"], Output::CURSOR_LEFT(1)),
-    (&["ESC", "[", "C"], Output::CURSOR_RIGHT(1)),
-    (&["ESC", "[", "A"], Output::CURSOR_UP(1)),
-    (&["ESC", "[", "B"], Output::CURSOR_DOWN(1)),
+    (&["ESC", "[", "D"], Output::CursorLeft(1)),
+    (&["ESC", "[", "C"], Output::CursorRight(1)),
+    (&["ESC", "[", "A"], Output::CursorUp(1)),
+    (&["ESC", "[", "B"], Output::CursorDown(1)),
+    (&["ESC", "[", "2", "~"], Output::INSERT),
+    (&["ESC", "[", "0", "K"], Output::EraseFromCursor),
 ];
 
 
@@ -54,21 +56,41 @@ impl Terminal {
         let (out_action, state) = self.parser.input_next(input);
         if let Some(o) = out_action {
             match o {
-                &Output::CURSOR_LEFT(1) => {
-                    self.buffer.move_cursor_left(1);
-                    sprint!("{}", bytes_to_str(&[27, 91, 68]));
+                &Output::CursorLeft(1) => {
+                    let amount = self.buffer.move_cursor_left(1);
+                    if amount > 0 {
+                        sprint!("{}", bytes_to_str(&[27, 91, 68]));
+                    }
                 }
-                &Output::CURSOR_LEFT(_) => {},
-                &Output::CURSOR_RIGHT(1) => {
-                    self.buffer.move_cursor_right(1);
-                    sprint!("{}", bytes_to_str(&[27, 91, 67]))
+                &Output::CursorLeft(_) => {},
+                &Output::CursorRight(1) => {
+                    let amount = self.buffer.move_cursor_right(1);
+                    if amount > 0 {
+                        sprint!("{}", bytes_to_str(&[27, 91, 67]))
+                    }
                 }
-                &Output::CURSOR_RIGHT(_) => {},
-                &Output::CURSOR_UP(_) => {},
-                &Output::CURSOR_DOWN(_) => {},
+                &Output::CursorRight(_) => {},
+                &Output::CursorUp(_) => {},
+                &Output::CursorDown(_) => {},
                 &Output::DEL => {
-                    self.buffer.delete();
-                    sprint!("{}", bytes_to_str(&[27, 91, 51, 126]))
+                    let deleted = self.buffer.delete();
+                    if deleted.is_some() {
+                        //Delete from cursor to end of line
+                        sprint!("{}", bytes_to_str(&[27, 91, 48, 'K' as u8]));
+                        // print buffer from cursor to the end
+                        let buf_to_end = self.buffer.slice_from_cursor();
+                        sprint!("{}", bytes_to_str(buf_to_end));
+                        // Return cursor to real cursor position
+                        let amt = (self.buffer.len() - self.buffer.cursor_position()).to_string();
+                        sprint!("{}", bytes_to_str(&[ &[27, 91], amt.as_bytes(), &[68] ].concat()));
+                    }
+                }
+                &Output::INSERT => {
+                    sprint!("{}", bytes_to_str(&[27, 91, 50, 126]));
+                    sprintln!("Insert!");
+                },
+                &Output::EraseFromCursor => {
+                    sprint!("{}", bytes_to_str(&[27, 91, 48, 75]));
                 }
                 _ => {}
             }
@@ -90,15 +112,29 @@ impl Terminal {
             }
             MachineState::Listening(Input::Char(127)) => {
                 // Backspace
-                self.buffer.backspace();
-                if self.buffer.cursor_position() > 0 {
+                let removed = self.buffer.backspace();
+                if removed.is_some() {
                     sprint!("{}{}{}", 8 as char, 32 as char, 8 as char);
                 }
             }
             MachineState::Listening(c) => {
                 let ch: u8 = c.into();
-                self.buffer.push(ch);
-                sprint!("{}", char::from(c));
+                if self.buffer.cursor_position() == self.buffer.len() {
+                    self.buffer.push(ch);
+                    sprint!("{}", ch as char);
+                } else {
+                    // Delete to end of the line
+                    sprint!("{}", bytes_to_str(&[27, 91, 48, 'K' as u8]));
+                    // push byte and print it
+                    self.buffer.push(ch);
+                    sprint!("{}", ch as char);
+                    // print buffer slice from cursor position to the end
+                    let buf_to_end = self.buffer.slice_from_cursor();
+                    sprint!("{}", bytes_to_str(buf_to_end));
+                    // Move cursor back to previous position
+                    let amt = (self.buffer.len() - self.buffer.cursor_position()).to_string();
+                    sprint!("{}", bytes_to_str(&[ &[27, 91], amt.as_bytes(), &[68] ].concat()));
+                }
             },
             _ => {}
         }
@@ -119,6 +155,11 @@ impl Terminal {
 
         self.stdin.clear();
         read
+    }
+
+    pub fn get_char(&mut self) -> char {
+        block_until(|| self.buffer.len() > 0);
+        self.buffer.flush().0[0] as char
     }
 }
 
