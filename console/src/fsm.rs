@@ -1,80 +1,5 @@
 use crate::tree::{NodeID, Tree};
 
-use hifive1::sprintln;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Input {
-    ESC,
-    NewLine,
-    Char(u8)
-}
-
-impl From<&str> for Input {
-    fn from(c: &str) -> Input {
-        match c {
-            "" => Input::Char(0),
-            "ESC" => Input::ESC,
-            "\n" => Input::NewLine,
-            _ => Input::Char(c.as_bytes()[0] as u8) // Only respect the first byte I guess?
-        }
-    }
-}
-
-impl From<u8> for Input {
-    fn from(c: u8) -> Input {
-        match c {
-            27 => Input::ESC,
-            13 | 10 => Input::NewLine,
-            _ => Input::Char(c)
-        }
-    }
-}
-
-impl Default for Input {
-    fn default() -> Input {
-        Input::Char(0)
-    }
-}
-
-impl From<Input> for char {
-    fn from(i: Input) -> char {
-        u8::from(i) as char
-    }
-}
-
-impl From<Input> for u8 {
-    fn from(i: Input) -> u8 {
-        match i {
-            Input::ESC => 27,
-            Input::NewLine => 10,
-            Input::Char(c) => c
-        }
-    }
-}
-
-
-#[derive(Debug, Clone, Copy)]
-pub enum Output {
-    DEL,
-    HOME,
-    F1,
-    ESC,
-    CursorRight(u8),
-    CursorLeft(u8),
-    CursorUp(u8),
-    CursorDown(u8),
-    INSERT,
-    EraseFromCursor
-}
-
-
-
-
-// `ESC, [, 3, ~` => DEL
-// `ESC, [, 1, ~` => HOME
-// `ESC, [, 1, 1, ~` => F1
-// `ESC, ESC` => ESC
-
 /// Node has a Key and Map of the connected Node and an Action A to associated with the transition.
 /// So, Node N has key k1, and is connected to Node with key k2. The transition from k1 to k2 has action a.
 #[derive(Debug)]
@@ -208,13 +133,3 @@ impl<K: Default + Copy + PartialEq + core::fmt::Debug, V: Copy> Trie<K, V> {
     }
 }
 
-impl Trie<Input, Output> {
-    pub fn from_strs(slices: &[ (&[&str], Output) ]) -> Trie<Input, Output> {
-        let mut t = Trie::new();
-        for (seq, v) in slices {
-            let it = (*seq).into_iter().map(|s| Input::from(*s));
-            t.insert_iter(it, *v);
-        }
-        t
-    }
-}

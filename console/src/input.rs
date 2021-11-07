@@ -3,6 +3,13 @@ pub const BUFFER_SIZE: usize = 256;
 
 use heapless::{Deque, Vec};
 
+/// LineBuffer represents the set of characters that are present in an active
+/// line on a Terminal. Where a character will be placed next depnds on the
+/// location of the `cursor` in the line.
+/// 
+/// This contains a buffer that is actively modified when adding characters.
+/// When `\n` is pushed, by default the buffer is flushed and the contents are
+/// placed in the `out` queue. This can then be dequeued from to retreive input.
 pub struct LineBuffer {
     buffer: Vec<u8, BUFFER_SIZE>,
     /// Cursor is the position in the buffer where the next pushed character is about to go
@@ -12,6 +19,8 @@ pub struct LineBuffer {
 
 
 impl LineBuffer {
+
+    /// Create a new empty Buffer with the cursor set to the column 0
     pub fn new() -> LineBuffer {
         LineBuffer {
             buffer: Vec::new(),
@@ -50,7 +59,6 @@ impl LineBuffer {
 
             self.cursor += 1;
         }
-
     }
 
     /// Remove and shift bytes in the buffer. Does not move cursor.
@@ -88,14 +96,15 @@ impl LineBuffer {
         self.remove((self.cursor as usize - 1).clamp(0, self.buffer.len() -1))
     }
 
+    /// Moves the cursor to the left by `amount`, bounded by the beginning of the buffer.
     pub fn move_cursor_left(&mut self, amount: u8) -> u8 {
         let amt = amount.clamp(0, self.cursor);
         self.cursor -= amt;
         amt
     }
 
+    /// Moves the cursor to the right by `amount`, bounded the length of the buffer.
     pub fn move_cursor_right(&mut self, amount: u8) -> u8 {
-        // sprintln!("cursor: {}, buffer: {}", self.cursor, self.buffer.len());
         let right_bound = if self.buffer.len() > 0 {
             self.buffer.len()
         } else {
@@ -108,13 +117,15 @@ impl LineBuffer {
         amt
     }
 
+    /// The current position of the cursor
     pub fn cursor_position(&self) -> u8 {
         self.cursor
     }
 
     /// Flushes contents of buffer into an array. This will clear the buffer,
     /// and reset the cursor to 0.
-    /// The returned array 
+    /// This returns the the buffer as an array with `BUFFER_SIZE` as well as
+    /// the number of bytes flushed.
     pub fn flush(&mut self) -> ([u8; BUFFER_SIZE], u8) {
         let mut a = [0; BUFFER_SIZE];
         let length = self.buffer.len();
@@ -134,32 +145,28 @@ impl LineBuffer {
         self.remove(0)
     }
 
+    /// Read the next byte from the `out` queue
     pub fn read_char(&mut self) -> Option<u8> {
         self.out.pop_back()
     }
 
+    /// True if the output queue has bytes to be read.
     pub fn has_output(&self) -> bool {
         self.out.len() > 0
     }
 
+    /// Borrow the contents of the buffer as a slice of bytes
     pub fn slice(&self) -> &[u8] {
         self.buffer.as_slice()
     }
 
+    /// Borrow the contents of the buffer starting at the position of the cursor
     pub fn slice_from_cursor(&self) -> &[u8] {
         &self.buffer[self.cursor as usize..self.buffer.len()]
     }
 
+    /// Current length of of the buffer
     pub fn len(&self) -> u8 {
         self.buffer.len() as u8
     }
-
-    // fn swap(&mut self, a: u8, b: u8) {
-    //     let a = a.clamp(0, self.buffer.len() as u8) as usize;
-    //     let b = b.clamp(0, self.buffer.len() as u8) as usize;
-
-    //     let temp = self.buffer[a];
-    //     self.buffer[a] = self.buffer[b];
-    //     self.buffer[b] = temp;
-    // }
 }

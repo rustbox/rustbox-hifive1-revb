@@ -2,7 +2,7 @@
 name = "rustbox"
 version = "0.0.1"
 authors = ["dougli1sqrd <dougli1sqrd+git@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "ISC"
 readme = "README.md"
 

@@ -1,12 +1,10 @@
 #![no_std]
 #![no_main]
-#![feature(panic_info_message,asm,alloc_error_handler,core_intrinsics, const_generics, const_evaluatable_checked,allocator_api,alloc_prelude,ptr_metadata)]
+#![feature(panic_info_message,asm,alloc_error_handler,core_intrinsics,allocator_api,ptr_metadata)]
 
 use core::alloc::GlobalAlloc;
 
 use alloc::string::String;
-use heapless;
-use heapless::Vec;
 use hifive1::Led;
 use hifive1::hal::e310x::CLINT;
 use hifive1::hal::e310x::PLIC;
@@ -16,7 +14,6 @@ use hifive1::hal::prelude::*;
 use hifive1::hal::core::clint;
 use hifive1::hal::core::plic::Priority;
 use hifive1::{sprint, pin, pins, sprintln};
-use input::LineBuffer;
 use riscv::register::mie;
 use riscv::register::mip;
 use riscv_rt::entry;
@@ -34,19 +31,11 @@ mod fsm;
 mod lock;
 mod tree;
 mod hash;
+mod game;
+mod shell;
 
-
-
-// static mut INPUT_BUFFER: Option<input::LineBuffer> = None;
-// static mut STD_IN: heapless::Deque<heapless::String<256>, 1> = heapless::Deque::new();
-
-
-// lazy_static! {
-//     static ref TERMINAL: lock::SpinLock<Terminal> = lock::SpinLock::new(Terminal::new());
-// }
 
 static mut TERMINAL: Option<Terminal> = None;
-
 
 #[no_mangle]
 extern "C" fn eh_personality() {}
@@ -134,6 +123,16 @@ fn read_line() -> String {
     s
 }
 
+fn get_char() -> char {
+    let mut c = 0 as char;
+    unsafe {
+        if let Some(ref mut term) = TERMINAL {
+            c = term.get_char();
+        }
+    }
+    c
+}
+
 #[no_mangle]
 fn MachineExternal() {
     riscv::interrupt::free(|_| {
@@ -213,7 +212,7 @@ fn update_time_compare(delta: u64) {
     set_time_cmp(next);
 }
 
-fn current_mtime() -> u64 {
+pub fn current_mtime() -> u64 {
     clint::MTIME.mtime()
 }
 
@@ -365,13 +364,18 @@ fn kmain() -> ! {
     update_time_compare(CLOCK_SPEED / 1000);
     enable_risc_interrupts();
 
+
+
     loop {
+        game::game();
+
         unsafe {
             riscv::asm::wfi();
         }
 
-        sprint!("Enter your name: ");
-        let name = read_line();
-        sprintln!("Hello, {}", name.trim());
+        sprint!("Enter an array: ");
+        let arr_in = read_line();
+        let arr = shell::parse_array(&arr_in.trim());
+        sprintln!("Array: {:?}", arr);
     }
 }

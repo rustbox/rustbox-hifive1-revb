@@ -1,5 +1,4 @@
 
-use hifive1::sprintln;
 use lock_api::{GuardSend, RawMutex};
 use core::cell::UnsafeCell;
 use riscv;
@@ -30,8 +29,6 @@ unsafe impl RawMutex for RawSpinLock {
         riscv::interrupt::free(|_| {
             let locked = self.locked.get();
             unsafe {
-                // sprintln!("Locked? {}", *locked);
-                // If not locked, now it is
                 if *locked == false {
                     *locked = true;
                     true

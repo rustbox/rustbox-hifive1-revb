@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(panic_info_message,asm,alloc_error_handler,alloc_prelude)]
+#![feature(panic_info_message,asm,alloc_error_handler)]
 
 use core::sync::atomic::AtomicBool;
 
@@ -27,7 +27,6 @@ use spin::Mutex;
 use lazy_static::lazy_static;
 use linked_list_allocator::LockedHeap;
 use alloc::alloc::{GlobalAlloc, Layout};
-use alloc::prelude::v1::*;
 
 extern crate alloc;
 

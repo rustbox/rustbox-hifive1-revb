@@ -522,33 +522,33 @@ pub fn frame(config: &VgaConfiguration, hsync: &mut HSync, vsync: &mut VSync) ->
     return 0;
 }
 
-#[cfg(test)]
-mod test_vga {
-    use super::*;
+// #[cfg(test)]
+// mod test_vga {
+//     use super::*;
 
-    #[test]
-    fn test_beam_state() {
-        let line = 490;
-        let config = vga::VgaConfiguration {
-            horizontal: vga::DirectionConfiguration {
-                visible: 640,
-                front_porch: 16,
-                sync: 96,
-                back_porch: 48,
-                hardware_scale: 2,
-                software_scale: 2
-            },
-            vertical: vga::DirectionConfiguration {
-                visible: 480,
-                front_porch: 10,
-                sync: 2,
-                back_porch: 33,
-                hardware_scale: 1,
-                software_scale: 1
-            }
-        };
+//     #[test]
+//     fn test_beam_state() {
+//         let line = 490;
+//         let config = vga::VgaConfiguration {
+//             horizontal: vga::DirectionConfiguration {
+//                 visible: 640,
+//                 front_porch: 16,
+//                 sync: 96,
+//                 back_porch: 48,
+//                 hardware_scale: 2,
+//                 software_scale: 2
+//             },
+//             vertical: vga::DirectionConfiguration {
+//                 visible: 480,
+//                 front_porch: 10,
+//                 sync: 2,
+//                 back_porch: 33,
+//                 hardware_scale: 1,
+//                 software_scale: 1
+//             }
+//         };
 
-        let (beam_state, line_state) = beam_state(0, line, config);
-        assert_eq!(line_state, Some(LineState::Sync))
-    }
-}
+//         let (beam_state, line_state) = beam_state(0, line, config);
+//         assert_eq!(line_state, Some(LineState::Sync))
+//     }
+// }
