@@ -1,12 +1,13 @@
 #![no_std]
 #![no_main]
-#![feature(panic_info_message,asm,alloc_error_handler,core_intrinsics)]
+#![feature(panic_info_message,alloc_error_handler,core_intrinsics)]
 
-use core::intrinsics::volatile_store;
+use core::arch::asm;
 
 use embedded_hal::blocking::delay;
 use hifive1::Led;
 use hifive1::hal::core::clint::MTIME;
+use hifive1::hal::core::counters::MCYCLE;
 use hifive1::hal::delay::Sleep;
 use hifive1::hal::e310x::CLINT;
 use hifive1::hal::e310x::GPIO0;
@@ -27,9 +28,7 @@ use riscv::register::mip;
 use riscv_rt::entry;
 use spin::{Mutex};
 
-
-use crate::vga::Brightness;
-use crate::vga::address_pins;
+use crate::vga::{Brightness, Red2, Green2, Blue2, red_pins2, green_pins2, blue_pins2};
 
 #[macro_use]
 extern crate lazy_static;
@@ -41,6 +40,7 @@ static mut HSYNC_STATE: bool = false;
 static mut VSYNC_STATE: bool = false;
 
 static mut CURRENT_COLUMN: u16 = 0;
+#[no_mangle]
 static mut CURRENT_LINE: u16 = 0;
 static mut FRAME: u16 = 0;
 
@@ -49,31 +49,29 @@ static mut FRAME: u16 = 0;
 mod vga;
 mod color;
 
-static mut HSYNC_LINE: Option<vga::HSync> = None;
-static mut VSYNC_LINE: Option<vga::VSync> = None;
 
-const VGA_CONFIGURATION: vga::VgaConfiguration = vga::VgaConfiguration {
-    horizontal: vga::DirectionConfiguration {
-        visible: 640,
-        front_porch: 16,
-        sync: 96,
-        back_porch: 48,
-        hardware_scale: 4,
-        software_scale: 1
-    },
-    vertical: vga::DirectionConfiguration {
-        visible: 480,
-        front_porch: 10,
-        sync: 2,
-        back_porch: 33,
-        hardware_scale: 1,
-        software_scale: 5
-    }
-};
+// const VGA_CONFIGURATION: vga::VgaConfiguration = vga::VgaConfiguration {
+//     horizontal: vga::DirectionConfiguration {
+//         visible: 640,
+//         front_porch: 16,
+//         sync: 96,
+//         back_porch: 48,
+//         hardware_scale: 4,
+//         software_scale: 1
+//     },
+//     vertical: vga::DirectionConfiguration {
+//         visible: 480,
+//         front_porch: 10,
+//         sync: 2,
+//         back_porch: 33,
+//         hardware_scale: 1,
+//         software_scale: 5
+//     }
+// };
 
 
-pub const LOGICAL_WIDTH: u8 = (VGA_CONFIGURATION.horizontal.visible / (VGA_CONFIGURATION.horizontal.hardware_scale * VGA_CONFIGURATION.horizontal.software_scale)) as u8;
-pub const LOGICAL_LINES: u16 = VGA_CONFIGURATION.vertical.visible / (VGA_CONFIGURATION.vertical.hardware_scale * VGA_CONFIGURATION.vertical.software_scale);
+// pub const LOGICAL_WIDTH: u8 = (VGA_CONFIGURATION.horizontal.visible / (VGA_CONFIGURATION.horizontal.hardware_scale * VGA_CONFIGURATION.horizontal.software_scale)) as u8;
+// pub const LOGICAL_LINES: u16 = VGA_CONFIGURATION.vertical.visible / (VGA_CONFIGURATION.vertical.hardware_scale * VGA_CONFIGURATION.vertical.software_scale);
 
 
 
@@ -102,7 +100,7 @@ extern "C"
 fn stop() -> ! {
     loop {
         unsafe {
-            asm!("wfi");
+            wfi();
         }
     }
 }
@@ -182,45 +180,11 @@ fn MachineExternal() {
                     stop();
                 },
                 Interrupt::GPIO18 => {
+                    // This starts a new line
                     unsafe {
                         (*GPIO0::ptr()).rise_ip.write(|w| w.pin18().set_bit());
-                        // sprintln!("Handling pixel interrupt");
 
-                        if let Some(hsync_line) = HSYNC_LINE.as_mut() {
-                            if HSYNC_STATE {
-                                hsync_line.on();
-                                // sprintln!("Horizontal Sync on, pixel {}", CURRENT_COLUMN)
-                            } else {
-                                hsync_line.off();
-                                // sprintln!("Horizontal Sync off, pixel {}", CURRENT_COLUMN)
-                            }
-                        }
-
-                        if CURRENT_COLUMN == 0 {
-                            // Only update the during the first column
-                            if let Some(vsync_line) = VSYNC_LINE.as_mut() {
-                                // sprintln!("Line {}, Vsync: {}", CURRENT_LINE, VSYNC_STATE);
-                                if VSYNC_STATE {
-                                    vsync_line.on();
-                                } else {
-                                    vsync_line.off();
-                                }
-                            }
-                        }
-
-                        CURRENT_COLUMN = (CURRENT_COLUMN + 1) % (VGA_CONFIGURATION.horizontal.size() / VGA_CONFIGURATION.horizontal.hardware_scale);
-                        if CURRENT_COLUMN == 0 {
-                            CURRENT_LINE = (CURRENT_LINE + 1) % (VGA_CONFIGURATION.vertical.size() / VGA_CONFIGURATION.vertical.hardware_scale);
-                            if CURRENT_LINE == 0 {
-                                FRAME += 1;
-                                sprintln!("Frame {}", FRAME);
-                            }
-                        }
-
-                        let (beam_state, line_state) = vga::beam_state(CURRENT_COLUMN, CURRENT_LINE, &VGA_CONFIGURATION);
-                        // sprintln!("line_state: {:?}", line_state);
-                        HSYNC_STATE = beam_state == vga::BeamState::Sync;
-                        VSYNC_STATE = line_state.is_some() && (line_state.unwrap() == vga::LineState::Sync);
+                        inc_line_count();
                     }
 
                 }
@@ -236,8 +200,19 @@ fn MachineExternal() {
     })
 }
 
+#[no_mangle]
+#[inline]
+unsafe fn inc_line_count() {
+    if CURRENT_LINE == 480 - 1 {
+        CURRENT_LINE = 0;
+    } else {
+        CURRENT_LINE += 1;
+    }
+}
+
 
 fn enabled_plic_interrupts() -> [(Interrupt, bool); 52] {
+    sprintln!("enter enableds");
     let (enable1, enable2) = unsafe {
         let en = &(*PLIC::ptr()).enable;
         (en[0].read().bits(), en[1].read().bits())
@@ -280,6 +255,7 @@ fn update_time_compare(delta: u64) {
     set_time_cmp(next);
 }
 
+#[no_mangle]
 fn current_mtime() -> u64 {
     clint::MTIME.mtime()
 }
@@ -378,6 +354,30 @@ fn delay(ms: u32) {
     }
 }
 
+fn delay_ticks(ticks: u32) {
+    let ticks = ticks as u64;
+    update_time_compare(ticks);
+    unsafe {
+        mie::set_mtimer();
+    }
+
+    loop {
+        unsafe {
+            wfi();
+        }
+
+        if mip::read().mtimer() {
+            break;
+        }
+    }
+
+    sprint!(".");
+
+    unsafe {
+        mie::clear_mtimer();
+    }
+}
+
 static CLOCK_SPEED: u64 = 32_768;
 
 fn setup_pmw(pmw: &PWM1) {
@@ -417,7 +417,7 @@ fn kmain() -> ! {
     let pins = dr.pins;
 
     // Configure clocks
-    let clocks = hifive1::clock::configure(p.PRCI, p.AONCLK, 320_000.khz().into());
+    let clocks = hifive1::clock::configure(p.PRCI, p.AONCLK, 302_100.khz().into());
 
     // Configure UART0 for stdout
     let _ = hifive1::stdout::configure(p.UART0,
@@ -427,20 +427,20 @@ fn kmain() -> ! {
         clocks,
     );
 
-    unsafe {
-        HSYNC_LINE = Some(vga::HSync { pin: vga::hsync_pins(pins.pin10) });
-        VSYNC_LINE = Some(vga::VSync { pin: vga::vsync_pins(pins.pin13) });
-    };
+    // unsafe {
+    //     HSYNC_LINE = Some(vga::HSync { pin: vga::hsync_pins(pins.pin10) });
+    //     VSYNC_LINE = Some(vga::VSync { pin: vga::vsync_pins(pins.pin13) });
+    // };
 
-    sprintln!("config = {:?}", &VGA_CONFIGURATION);
-    let (_beam_state, line_state) = vga::beam_state(0, 491, &VGA_CONFIGURATION);
-    sprintln!("Test Line State: {:?}", line_state);
+    // sprintln!("config = {:?}", &VGA_CONFIGURATION);
+    // let (_beam_state, line_state) = vga::beam_state(0, 491, &VGA_CONFIGURATION);
+    // sprintln!("Test Line State: {:?}", line_state);
 
 
     initialize_plic_enable_and_threshold();
     // configure_uart_receiver_interrupt_enable();
     let enableds = enabled_plic_interrupts();
-    setup_pmw(&p.PWM1);
+    // setup_pmw(&p.PWM1);
     sprintln!("{:?}", enableds);
     
     // let rgb_pins = pins!(pins, (led_red, led_green, led_blue));
@@ -453,27 +453,27 @@ fn kmain() -> ! {
     // tleds.2.on();
     update_time_compare(CLOCK_SPEED / 1000);
     enable_risc_interrupts();
-    setup_gpio18_interrupt();
-    // let timer_start = current_mtime();
+    // setup_gpio18_interrupt();
+    let _ = current_mtime();
 
-    let config = vga::VgaConfiguration {
-        horizontal: vga::DirectionConfiguration::new(
-            25.422045680238, 
-            0.63555114200596, 
-            3.8133068520357, 
-            1.9066534260179, 
-            25.175,
-            1.0
-        ),
-        vertical: vga::DirectionConfiguration::new(
-            15.253227408143,
-            0.31777557100298,
-            0.063555114200596,
-            1.0486593843098,
-            31.46875,
-            1.0
-        )
-    };
+    // let config = vga::VgaConfiguration {
+    //     horizontal: vga::DirectionConfiguration::new(
+    //         25.422045680238, 
+    //         0.63555114200596, 
+    //         3.8133068520357, 
+    //         1.9066534260179, 
+    //         25.175,
+    //         1.0
+    //     ),
+    //     vertical: vga::DirectionConfiguration::new(
+    //         15.253227408143,
+    //         0.31777557100298,
+    //         0.063555114200596,
+    //         1.0486593843098,
+    //         31.46875,
+    //         1.0
+    //     )
+    // };
 
     // let mut gpio_0 = pins!(pins, (dig8)).into_output();
 
@@ -508,8 +508,6 @@ fn kmain() -> ! {
     // sprintln!("after set pin");
 
     // let mut i: u32 = 0;
-    const horizontal: usize = 160;
-    const vertical: usize = 96;
     
     // let buffer = unsafe { &mut *(0x8000000c as *mut LineBuffer) };
 
@@ -527,99 +525,368 @@ fn kmain() -> ! {
     //     frame: unsafe { &mut *(0x8000000c as *mut vga::Frame) }
     // };
     
-    unsafe {
-        let start = &_sheap as *const usize;
-        sprintln!("\"heap\" start: {:?}", start);
-    }
-
-    let mut duration: u64 = 0;
-    let mut frames = 0;
-    sprintln!("Initialize frame buffer in memory");
+    
 
     // sprintln!("line = {:?}", buffer.pixels[0]);
     // sprintln!("size is {}", buffer.pixels.len());
 
-    loop {
-        let start = mcycle::read64();
-        for line in 0..buffer_size {
-            // buffer.pixels[line] = 0;
-            // for pixel in 0..160 {
-            //     // sprintln!("pixel is {}", pixel);
-            //     // buffer.pixels[line][pixel] = 0;
-            // }
-        }
-        let end = mcycle::read64();
-        frames += 1;
-        if frames > 0 {
-            duration += (end - start);
-        }
-        if frames >= 20 {
-            break;
-        }
-    }
-
     // buffer.pixels[4321] = 42;
-    let magic = unsafe { & *(0x800010ed as *const u8) };
-    sprintln!("Magic value at 0x800010ed: {}", magic);
-
-    sprintln!("frames {}", frames);
-    sprintln!("duration: {}", duration);
-    let cycles_per_frame = duration as f32 / (frames) as f32;
-    sprintln!("Average cycles per frame: {}", cycles_per_frame);
 
     // let end = &buffer.pixels[buffer_size - 128 .. buffer_size];
     // sprintln!("end of buffer: {:?}", end);
 
     // sprintln!("Whole frame: {:?}", buffer.pixels);
 
+
+
+    let mut red = Red2 {
+        pins: red_pins2(pins!(pins, (dig8, dig9)))
+    };
+
+    let mut green = Green2 {
+        pins: green_pins2(pins!(pins, (dig10, dig11)))
+    };
+
+    let mut blue = Blue2 {
+        pins: blue_pins2(pins!(pins, (dig12, dig13)))
+    };
+
+    red.set_level(0);
+    green.set_level(0);
+    blue.set_level(0);
+
+    let mut line_buffer: [u32; 160] = [0; 160];
+    line_buffer[64] = 12;
+
+    let mut reset = pin!(pins, dig2).into_output();
+    let _ = reset.set_high();
+    for i in 0..32 {
+        set_color2(i);
+        set_color2_and_wait(i);
+    }
+    set_color2(0);
+    let _ = reset.set_low();
+
+    // Should draw a green bar down the middle?
     loop {
-
-        // for line in buffer {
-        //     for pixel in line {
-        //         let c = &color::COLOR_MAP[pixel as usize];
-        //         red.set_level(c.0);
-        //     }
-        // }
-        // if i == 200 {
-        //     p.PWM1.cfg.write(|w|  w.cmp1ip().clear_bit() );
-        //     sprintln!("Enabling pmw1 cmp1 interrupt");
-        //     enable_pmw_interrupt(1, 1);
-        // }
-        // pwm.
-        // let mut frames = 0;
-        // let time_start = MTIME.mtime();
-        // let mut line_time = 0;
-        // loop {
-    
-        //     line_time = vga::frame(&config);
-        //     frames += 1;
-    
-        //     if frames > 1000 {
-        //         break;
-        //     }
-        // }
-        // let time_stop = MTIME.mtime();
-        // cycles / frame * (1 sec / 32,768 cycles) * (1000 ms/sec)
-
-        // vga::frame(&config, &mut hsync, &mut vsync);
-
-        // Wait a bit before repeating
-        // while MTIME.mtime() - time_stop < 16_000 {}
-
-        // Try to do something before it triggers the interrupt
-        // Wait until we get at least 500 scaled pwm1 ticks
-        // while p.PWM1.pwms.read().bits() < 500 {}
-        // // Then set the count back to 0
-        // let t = p.PWM1.count.read().bits();
-        // let ts = p.PWM1.pwms.read().bits();
-        // i += 1;
-        // sprintln!("{}) Scaled is {}, count is {}", i, ts, t);
-        // sprintln!("Attempt to set to 0");
-        // p.PWM1.count.write(|w| unsafe { w.bits(0) });
-        unsafe {
-            wfi()
+        // The idea here is that a single line should be 9600 cycles (12 cycles per pixel, 
+        // we're running at 12x vga speed)
+        // But software pixels are 5 hw pixels, or 60 cycles
+        // So, init i (1 cycle) + 160 * (3 (lw, compute index) + 1 (set_color) + 1 (inc i) + 1 (bne 160) + N (nop) )
+        // And we can add a constant set of NOP at the end of a line to try and equal 9600 cycles
+        // Currently N (nops inside loop) = 53, and overhead nops = 160, 59*160 + 160 = 9600 theoretically
+        let mut i = 0; // 1
+        while i < 160 {
+            let c = line_buffer[i]; // 3 (since lw on e310 is 2 cycles)
+            set_color2(c); // 1
+            unsafe {
+                asm!(   // 53
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                )
+            }
+            i += 1; // 1; bne i, 160: 1
+            unsafe {
+                // 160
+                asm!(
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                    "nop",
+                );
+            }
         }
     }
+}
+
+#[no_mangle]
+fn set_color(rgb: (&mut Red2, &mut Green2, &mut Blue2), color: u8) {
+    // let r = (color & rshift) >> 4;
+    // let g = (color & gshift) >> 2;
+    // let b = color & bshift;
+    // rgb.0.set_level(r);
+    // rgb.1.set_level(g);
+    // rgb.2.set_level(b);
+
+}
+
+#[no_mangle]
+#[inline]
+fn set_color2(color: u32) {
+    // let gpio_val = 
+    //     (color as u32 & red1 as u32) >> 5 |
+    //     (color as u32 & red0 as u32) >> 3 |
+    //     (color as u32 & green1 as u32) << 6 |
+    //     (color as u32 & green0 as u32) << 8 |
+    //     (color as u32 & blue1 as u32) << 19 |
+    //     (color as u32 & blue0 as u32) << 21;
+    // sprintln!("gpio_val = {:#032b}", gpio_val);
+    let gpio_val = color;
+
+    unsafe {
+        // 0x1001_2000 + 0x0c = 
+        let gpio_out = 0x1001_200C as *mut u32;
+        *gpio_out = gpio_val;
+    }
+}
+
+#[no_mangle]
+#[inline]
+fn set_color2_and_wait(color: u32) {
+    unsafe {
+        // GPIO is 0x1001_2000 and offset 0x0c is the output register:
+        let gpio_out = 0x1001_200C as *mut u32;
+        *gpio_out = color;
+        asm!(
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            // "nop",
+        )
+    }
+}
+
+#[no_mangle]
+#[inline]
+fn pixel_wait() {
+    unsafe {
+        asm!(
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+            "nop",
+        )
+    }
+}
+
+#[no_mangle]
+#[inline]
+fn set_wide_pixel(color: u32) {
+    set_color2_and_wait(color);
+    set_color2_and_wait(color);
+    set_color2_and_wait(color);
+    set_color2_and_wait(color);
+    set_color2_and_wait(color);
 }
 
 // sprintln!("Average line time for last frame {}", line_time as f32 / 320.0);

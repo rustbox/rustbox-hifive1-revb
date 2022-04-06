@@ -2,6 +2,7 @@ use core::ops::DerefMut;
 use core::ops::Deref;
 
 use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::PinState;
 use hifive1::hal::{core::clint::MTIME, e310x::clint::mtime};
 use riscv::register::{mcycle, mip};
 use hifive1::hal::DeviceResources;
@@ -10,18 +11,30 @@ use hifive1::hal::gpio::gpio0::*;
 use hifive1::hal::gpio::{NoInvert, Output, Regular, Unknown};
 
 use crate::{VSYNC_STATE, set_time_cmp};
-use crate::{LOGICAL_WIDTH, LOGICAL_LINES};
+// use crate::{LOGICAL_WIDTH, LOGICAL_LINES};
 
-pub fn red_pins(pins: (Pin0<Unknown>, Pin1<Unknown>, Pin2<Unknown>)) -> RedPins {
+pub fn red_pins3(pins: (Pin0<Unknown>, Pin1<Unknown>, Pin2<Unknown>)) -> RedPins3 {
     (pins.0.into_output(), pins.1.into_output(), pins.2.into_output())
 }
 
-pub fn green_pins(pins: (Pin9<Unknown>, Pin10<Unknown>, Pin11<Unknown>)) -> GreenPins {
+pub fn green_pins3(pins: (Pin9<Unknown>, Pin10<Unknown>, Pin11<Unknown>)) -> GreenPins3 {
     (pins.0.into_output(), pins.1.into_output(), pins.2.into_output())
 }
 
-pub fn blue_pins(pins: (Pin3<Unknown>, Pin4<Unknown>, Pin5<Unknown>)) -> BluePins {
+pub fn blue_pins3(pins: (Pin3<Unknown>, Pin4<Unknown>, Pin5<Unknown>)) -> BluePins3 {
     (pins.0.into_output(), pins.1.into_output(), pins.2.into_output())
+}
+
+pub fn red_pins2(pins: (Pin0<Unknown>, Pin1<Unknown>)) -> RedPins2 {
+    (pins.0.into_output(), pins.1.into_output())
+}
+
+pub fn green_pins2(pins: (Pin2<Unknown>, Pin3<Unknown>)) -> GreenPins2 {
+    (pins.0.into_output(), pins.1.into_output(), )
+}
+
+pub fn blue_pins2(pins: (Pin4<Unknown>, Pin5<Unknown>)) -> BluePins2 {
+    (pins.0.into_output(), pins.1.into_output())
 }
 
 pub fn address_pins(pins: (Pin16<Unknown>, Pin17<Unknown>, Pin18<Unknown>,
@@ -118,50 +131,50 @@ pub struct VgaConfiguration {
     pub vertical: DirectionConfiguration
 }
 
-#[repr(transparent)]
-pub struct Frame {
-    pub buffer: [[u8; LOGICAL_WIDTH as usize]; LOGICAL_LINES as usize]
-}
+// #[repr(transparent)]
+// pub struct Frame {
+//     pub buffer: [[u8; LOGICAL_WIDTH as usize]; LOGICAL_LINES as usize]
+// }
 
-pub struct LineBufferWriter {
-    address_lines: ColorAddress,
-    rgb: (Red, Green, Blue),
-    logical_line: u16,
-    hardware_line: u16,
-    frame: &'static Frame
-}
+// pub struct LineBufferWriter {
+//     address_lines: ColorAddress,
+//     rgb: (Red3, Green3, Blue3),
+//     logical_line: u16,
+//     hardware_line: u16,
+//     frame: &'static Frame
+// }
 
-impl LineBufferWriter {
-    fn write_line(&mut self) {
-        for pix in 0..LOGICAL_WIDTH {
-            // turn on address
-            self.address_lines.set_address(pix as u8);
-            // Translate color index into color
-            let color_index = self.frame.buffer[self.logical_line as usize][pix as usize];
-            let color = &crate::color::COLOR_MAP[color_index as usize];
-            // turn on color lines
-            self.rgb.0.set_level(color.0);
-            self.rgb.1.set_level(color.1);
-            self.rgb.2.set_level(color.2);
-        }
-    }
-}
+// impl LineBufferWriter {
+//     fn write_line(&mut self) {
+//         for pix in 0..LOGICAL_WIDTH {
+//             // turn on address
+//             self.address_lines.set_address(pix as u8);
+//             // Translate color index into color
+//             let color_index = self.frame.buffer[self.logical_line as usize][pix as usize];
+//             let color = &crate::color::COLOR_MAP[color_index as usize];
+//             // turn on color lines
+//             self.rgb.0.set_level(color.0);
+//             self.rgb.1.set_level(color.1);
+//             self.rgb.2.set_level(color.2);
+//         }
+//     }
+// }
 
 
 /// The Horizontal state of the VGA signal
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum BeamState {
-    Visible,
-    Blank,
-    Sync,
-}
+// #[derive(Copy, Clone, PartialEq, Debug)]
+// pub enum BeamState {
+//     Visible,
+//     Blank,
+//     Sync,
+// }
 
 /// The Vertical state of the VGA signal
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum LineState {
-    Blank,
-    Sync
-}
+// #[derive(Clone, Copy, PartialEq, Debug)]
+// pub enum LineState {
+//     Blank,
+//     Sync
+// }
 
 /// Compute the state the Beam (vertical and horizontal) is in based on the current pixel, column and line.
 /// The horizontal state can be `Visible`, `Blank`, or `Sync` and is determined by the VgaConfiguration
@@ -171,53 +184,45 @@ pub enum LineState {
 /// The vertical state is expressed as an Option of `Blank` or `Sync` when the line is in the front porch, 
 /// back porch, or sync period, respectively. If a line is not in either period then nothing in particular
 /// needs to happen and is the Option None.
-pub fn beam_state(column: u16, line: u16, configuration: &VgaConfiguration) -> (BeamState, Option<LineState>) {
-    // Both Vertical and Horizontal are "Blank" if we're in the Vertical blanking period
-    if line >= configuration.vertical.start_front_porch() / configuration.vertical.hardware_scale && line <= configuration.vertical.end_front_porch() / configuration.vertical.hardware_scale
-        || line >= configuration.vertical.start_back_porch() / configuration.vertical.hardware_scale && line <= configuration.vertical.end_back_porch() / configuration.vertical.hardware_scale {
+// pub fn beam_state(column: u16, line: u16, configuration: &VgaConfiguration) -> (BeamState, Option<LineState>) {
+//     // Both Vertical and Horizontal are "Blank" if we're in the Vertical blanking period
+//     if line >= configuration.vertical.start_front_porch() / configuration.vertical.hardware_scale && line <= configuration.vertical.end_front_porch() / configuration.vertical.hardware_scale
+//         || line >= configuration.vertical.start_back_porch() / configuration.vertical.hardware_scale && line <= configuration.vertical.end_back_porch() / configuration.vertical.hardware_scale {
 
-        (BeamState::Blank, Some(LineState::Blank))
-    } else {
-        let beam_state = if column <= configuration.horizontal.visible / configuration.horizontal.hardware_scale - 1 {
-            BeamState::Visible
-        } else if column >= configuration.horizontal.start_front_porch() / configuration.horizontal.hardware_scale && column <= configuration.horizontal.end_front_porch() / configuration.horizontal.hardware_scale {
-            BeamState::Blank
-        } else if column >= configuration.horizontal.start_sync() / configuration.horizontal.hardware_scale && column <= configuration.horizontal.end_sync() / configuration.horizontal.hardware_scale {
-            BeamState::Sync
-        } else {
-            BeamState::Blank
-        };
+//         (BeamState::Blank, Some(LineState::Blank))
+//     } else {
+//         let beam_state = if column <= configuration.horizontal.visible / configuration.horizontal.hardware_scale - 1 {
+//             BeamState::Visible
+//         } else if column >= configuration.horizontal.start_front_porch() / configuration.horizontal.hardware_scale && column <= configuration.horizontal.end_front_porch() / configuration.horizontal.hardware_scale {
+//             BeamState::Blank
+//         } else if column >= configuration.horizontal.start_sync() / configuration.horizontal.hardware_scale && column <= configuration.horizontal.end_sync() / configuration.horizontal.hardware_scale {
+//             BeamState::Sync
+//         } else {
+//             BeamState::Blank
+//         };
 
-        // sprintln!("{:?}", configuration.vertical);
-        // sprintln!("line: {}, scaled sync start {}, scaled sync end {}", line, configuration.vertical.start_sync() / configuration.vertical.hardware_scale, configuration.vertical.end_sync() / configuration.vertical.hardware_scale);
+//         // sprintln!("{:?}", configuration.vertical);
+//         // sprintln!("line: {}, scaled sync start {}, scaled sync end {}", line, configuration.vertical.start_sync() / configuration.vertical.hardware_scale, configuration.vertical.end_sync() / configuration.vertical.hardware_scale);
 
-        let line_state = if line >= configuration.vertical.start_sync() / configuration.vertical.hardware_scale && line <= configuration.vertical.end_sync() / configuration.vertical.hardware_scale {
+//         let line_state = if line >= configuration.vertical.start_sync() / configuration.vertical.hardware_scale && line <= configuration.vertical.end_sync() / configuration.vertical.hardware_scale {
             
-            Some(LineState::Sync)
-        } else {
-            None
-        };
+//             Some(LineState::Sync)
+//         } else {
+//             None
+//         };
 
-        (beam_state, line_state)
-    }
-}
+//         (beam_state, line_state)
+//     }
+// }
 
 /// Given the values of red, green, and blue, and the vertical and horizontal sync values, engage or
 /// disengage the specific Output Pins
-fn output_color(red: &mut Red, green: &mut Green, blue: &mut Blue, red_value: u8, green_value: u8, blue_value: u8, beam_state: BeamState) {
-
+fn output_color3(red: &mut Red3, green: &mut Green3, blue: &mut Blue3, red_value: u8, green_value: u8, blue_value: u8) {
     red.set_level(red_value);
     green.set_level(green_value);
     blue.set_level(blue_value);
 }
 
-fn output_sync(hsync: &mut HSync, vsync: &mut VSync, beam_state: (BeamState, Option<LineState>)) {
-
-}
-
-fn output_lines(hsync: &mut HSync, vsync: &mut VSync, red: &mut Red, green: &mut Green, blue: &mut Blue, beam_state: (BeamState, Option<LineState>)) {
-
-}
 
 
 pub struct VSync {
@@ -263,13 +268,24 @@ pub trait Brightness {
 }
 
 /// dig8, dig9, dig10
-pub type RedPins = (Pin0<Output<Regular<NoInvert>>>, Pin1<Output<Regular<NoInvert>>>, Pin2<Output<Regular<NoInvert>>>);
+pub type RedPins3 = (Pin0<Output<Regular<NoInvert>>>, Pin1<Output<Regular<NoInvert>>>, Pin2<Output<Regular<NoInvert>>>);
 
 /// dig11, dig12, dig13
-pub type BluePins = (Pin3<Output<Regular<NoInvert>>>, Pin4<Output<Regular<NoInvert>>>, Pin5<Output<Regular<NoInvert>>>);
+pub type BluePins3 = (Pin3<Output<Regular<NoInvert>>>, Pin4<Output<Regular<NoInvert>>>, Pin5<Output<Regular<NoInvert>>>);
 
 /// dig15, dig16, dig17
-pub type GreenPins = (Pin9<Output<Regular<NoInvert>>>, Pin10<Output<Regular<NoInvert>>>, Pin11<Output<Regular<NoInvert>>>);
+pub type GreenPins3 = (Pin9<Output<Regular<NoInvert>>>, Pin10<Output<Regular<NoInvert>>>, Pin11<Output<Regular<NoInvert>>>);
+
+/// dig0, dig1
+pub type RedPins2 = (Pin0<Output<Regular<NoInvert>>>, Pin1<Output<Regular<NoInvert>>>);
+
+/// dig2, dig3
+pub type GreenPins2 = (Pin2<Output<Regular<NoInvert>>>, Pin3<Output<Regular<NoInvert>>>);
+
+/// dig4, dig5
+pub type BluePins2 = (Pin4<Output<Regular<NoInvert>>>, Pin5<Output<Regular<NoInvert>>>);
+
+
 
 /// digs: [0, 1, 2, 3, 4, 5, 6, 7]
 pub type ColorAddressPins = (Pin16<Output<Regular<NoInvert>>>, Pin17<Output<Regular<NoInvert>>>, Pin18<Output<Regular<NoInvert>>>, 
@@ -282,16 +298,28 @@ pub type HSyncPin = Pin10<Output<Regular<NoInvert>>>;
 /// dig19
 pub type VSyncPin = Pin13<Output<Regular<NoInvert>>>;
 
-pub struct Red {
-    pub pins: RedPins
+pub struct Red3 {
+    pub pins: RedPins3
 }
 
-pub struct Green {
-    pub pins: GreenPins
+pub struct Green3 {
+    pub pins: GreenPins3
 }
 
-pub struct Blue {
-    pub pins: BluePins
+pub struct Blue3 {
+    pub pins: BluePins3
+}
+
+pub struct Red2 {
+    pub pins: RedPins2
+}
+
+pub struct Green2 {
+    pub pins: GreenPins2
+}
+
+pub struct Blue2 {
+    pub pins: BluePins2
 }
 
 pub struct ColorAddress {
@@ -360,7 +388,7 @@ impl ColorAddress {
     }
 }
 
-impl Brightness for Red {
+impl Brightness for Red3 {
     fn set_level(&mut self, level: u8) {
         if level % 2 == 1 {
             let _ = self.pins.2.set_high();
@@ -382,7 +410,7 @@ impl Brightness for Red {
     }
 }
 
-impl Brightness for Green {
+impl Brightness for Green3 {
     fn set_level(&mut self, level: u8) {
         if level % 2 == 1 {
             let _ = self.pins.2.set_high();
@@ -404,7 +432,7 @@ impl Brightness for Green {
     }
 }
 
-impl Brightness for Blue {
+impl Brightness for Blue3 {
     fn set_level(&mut self, level: u8) {
         if level % 2 == 1 {
             let _ = self.pins.2.set_high();
@@ -423,6 +451,42 @@ impl Brightness for Blue {
         } else {
             let _ = self.pins.0.set_low();
         }
+    }
+}
+
+impl Brightness for Red2 {
+    #[no_mangle]
+    fn set_level(&mut self, level: u8) {
+        // PinState;
+        let pin0 = PinState::from((level & 0b0000001) == 1);
+        let pin1 = PinState::from((level & 0b0000010) == 2);
+
+        // sprintln!("pin0: {:?}, pin1: {:?}", pin0, pin1);
+
+        let _ = self.pins.0.set_state(pin0);
+        let _ = self.pins.1.set_state(pin1);
+    }
+}
+
+impl Brightness for Green2 {
+    fn set_level(&mut self, level: u8) {
+        // PinState;
+        let pin0 = PinState::from((level & 0b0000001) == 1);
+        let pin1 = PinState::from((level & 0b0000010) == 2);
+
+        let _ = self.pins.0.set_state(pin0);
+        let _ = self.pins.1.set_state(pin1);
+    }
+}
+
+impl Brightness for Blue2 {
+    fn set_level(&mut self, level: u8) {
+        // PinState;
+        let pin0 = PinState::from((level & 0b0000001) == 1);
+        let pin1 = PinState::from((level & 0b0000010) == 2);
+
+        let _ = self.pins.0.set_state(pin0);
+        let _ = self.pins.1.set_state(pin1);
     }
 }
 

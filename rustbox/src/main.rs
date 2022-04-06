@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(panic_info_message,asm,alloc_error_handler,alloc_prelude)]
+#![feature(panic_info_message,alloc_error_handler)]
 
 use core::sync::atomic::AtomicBool;
 
@@ -15,6 +15,7 @@ use riscv::register::mcause;
 use riscv::register::mcause::Exception;
 use riscv::register::mstatus;
 use riscv::register::mtval;
+use riscv::asm::wfi;
 use riscv::register::pmpcfg0;
 use riscv::register::satp;
 use riscv_rt::entry;
@@ -27,7 +28,7 @@ use spin::Mutex;
 use lazy_static::lazy_static;
 use linked_list_allocator::LockedHeap;
 use alloc::alloc::{GlobalAlloc, Layout};
-use alloc::prelude::v1::*;
+// use alloc::prelude::v1::*;
 
 extern crate alloc;
 
@@ -72,7 +73,7 @@ extern "C"
 fn stop() -> ! {
     loop {
         unsafe {
-            asm!("wfi");
+            wfi();
         }
     }
 }

@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(panic_info_message,asm,alloc_error_handler,core_intrinsics, const_generics, const_evaluatable_checked,allocator_api,alloc_prelude,ptr_metadata)]
+#![feature(panic_info_message,alloc_error_handler,core_intrinsics, adt_const_params, generic_const_exprs,allocator_api,ptr_metadata)]
 
 use core::alloc::GlobalAlloc;
 
@@ -19,6 +19,7 @@ use hifive1::{sprint, pin, pins, sprintln};
 use input::LineBuffer;
 use riscv::register::mie;
 use riscv::register::mip;
+use riscv::asm::wfi;
 use riscv_rt::entry;
 use buddyalloc::Heap;
 
@@ -74,7 +75,7 @@ extern "C"
 fn stop() -> ! {
     loop {
         unsafe {
-            asm!("wfi");
+            wfi();
         }
     }
 }
