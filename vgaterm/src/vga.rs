@@ -10,7 +10,7 @@ use hifive1::{sprint, pin, pins, sprintln};
 use hifive1::hal::gpio::gpio0::*;
 use hifive1::hal::gpio::{NoInvert, Output, Regular, Unknown};
 
-use crate::{VSYNC_STATE, set_time_cmp};
+use crate::{set_time_cmp};
 // use crate::{LOGICAL_WIDTH, LOGICAL_LINES};
 
 pub fn red_pins3(pins: (Pin0<Unknown>, Pin1<Unknown>, Pin2<Unknown>)) -> RedPins3 {

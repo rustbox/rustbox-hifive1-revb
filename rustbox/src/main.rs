@@ -2,9 +2,6 @@
 #![no_main]
 #![feature(panic_info_message,alloc_error_handler)]
 
-use core::sync::atomic::AtomicBool;
-
-use alloc::string::String;
 use hifive1::hal::core::clint;
 use hifive1::hal::e310x::CLINT;
 use hifive1::hal::e310x::PLIC;
@@ -16,18 +13,13 @@ use riscv::register::mcause::Exception;
 use riscv::register::mstatus;
 use riscv::register::mtval;
 use riscv::asm::wfi;
-use riscv::register::pmpcfg0;
-use riscv::register::satp;
 use riscv_rt::entry;
 use hifive1::hal::prelude::*;
 use hifive1::hal::DeviceResources;
 use hifive1::{pin, pins, sprintln};
 use hifive1::Led;
-use hifive1::hal::e310x::interrupt;
-use spin::Mutex;
-use lazy_static::lazy_static;
 use linked_list_allocator::LockedHeap;
-use alloc::alloc::{GlobalAlloc, Layout};
+use alloc::alloc::Layout;
 // use alloc::prelude::v1::*;
 
 extern crate alloc;
@@ -85,16 +77,6 @@ fn MachineTimer() {
         update_time_compare(CLOCK_SPEED / 1000);
         // 1000 Timer interupts per second
     })
-}
-
-#[no_mangle]
-fn UserTimer() {
-    sprint!("Ut")
-}
-
-#[no_mangle]
-fn SupervisorTimer() {
-    sprint!("St");
 }
 
 #[no_mangle]

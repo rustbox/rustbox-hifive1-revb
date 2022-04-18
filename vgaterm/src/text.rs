@@ -120,6 +120,15 @@ static COLOR_MAP: [u8; 16] = [
     0x3f,       // White
 ];
 
+fn color_to_index(color: u8) -> u8 {
+    for (i, c) in COLOR_MAP.iter().enumerate() {
+        if color == *c {
+            return i as u8;
+        }
+    }
+    return 0;
+}
+
 pub const COLUMNS: usize = 21;
 pub const ROWS: usize = 10;
 
@@ -191,6 +200,32 @@ impl From<u16> for CharVis {
         let back = COLOR_MAP[(colors >> 4) as usize];
         CharVis { chr: c as char, reverse, foreground: fore, background: back }
     }
+}
+
+impl From<CharVis> for u16 {
+    fn from(charvis: CharVis) -> u16 {
+        let rev_byte: u8 = if charvis.reverse {
+            1 << 7
+        } else {
+            0
+        };
+        let lo = rev_byte | (charvis.chr as u8);
+        let fore = color_to_index(charvis.foreground);
+        let back = color_to_index(charvis.background) << 4;
+        let color = (back | fore) as u16;
+        return (color << 8) as u16 | lo as u16;
+    }
+}
+
+pub fn toggle_reverse_char(ch: u16) -> u16 {
+    // The reverse bit is bit 7
+    ch ^ (1 << 7)
+}
+
+pub fn write_char(ch: char, row: usize, col: usize, text_buffer: &mut [[u16; 21]], fore: u8, back: u8) {
+    let color = ((back as u16) << 4 | fore as u16) << 8;
+    let char_data = color | ch as u16;
+    text_buffer[row][col] = char_data;
 }
 
 pub fn draw_text(text: &str, buffer: &mut [u8], row: usize, foreground: u8, background: u8) {
